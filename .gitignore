@@ -1,6 +1,6 @@
 .data/
 .outputs/
-.IMPLEMENTATION_COMPLETE.md
+./IMPLEMENTATION_COMPLETE.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
