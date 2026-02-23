@@ -1,0 +1,93 @@
+{
+  "categories": {
+    "automotive": {
+      "keywords": [
+        "car", "vehicle", "auto", "truck", "suv", "sedan", "lease", "buy car",
+        "car insurance", "auto parts", "motorcycle", "hybrid"
+      ],
+      "products": ["Toyota Camry", "Honda Civic", "Ford F-150", "Tesla Model 3"],
+      "price_range": [15000, 50000]
+    },
+    "technology": {
+      "keywords": [
+        "laptop", "phone", "computer", "tablet", "smartphone", "tech",
+        "software", "app", "gadget", "electronics", "wireless"
+      ],
+      "products": ["iPhone 15", "MacBook Pro", "Samsung Galaxy", "iPad Pro"],
+      "price_range": [200, 3000]
+    },
+    "travel": {
+      "keywords": [
+        "flight", "hotel", "vacation", "trip", "travel", "booking",
+        "resort", "airline", "luggage", "passport"
+      ],
+      "products": ["Flight to Paris", "Hotel in NYC", "Cruise package"],
+      "price_range": [300, 5000]
+    },
+    "finance": {
+      "keywords": [
+        "loan", "credit card", "mortgage", "investment", "insurance",
+        "banking", "savings", "interest rate", "stock"
+      ],
+      "products": ["Home Loan", "Auto Loan", "Credit Card"],
+      "price_range": [0, 500]
+    },
+    "health": {
+      "keywords": [
+        "fitness", "gym", "diet", "nutrition", "health", "wellness",
+        "supplement", "vitamin", "doctor", "hospital"
+      ],
+      "products": ["Protein Powder", "Fitness Class", "Medicine"],
+      "price_range": [10, 200]
+    },
+    "grocery": {
+      "keywords": [
+        "food", "grocery", "milk", "bread", "fruit", "vegetable",
+        "organic", "delivery", "supermarket"
+      ],
+      "products": ["Organic Oat Milk", "Fresh Vegetables", "Bread"],
+      "price_range": [2, 20]
+    },
+    "home": {
+      "keywords": [
+        "furniture", "home", "decor", "appliance", "kitchen",
+        "bedroom", "sofa", "lamp", "paint"
+      ],
+      "products": ["Office Chair", "Bedroom Set", "Kitchen Sink"],
+      "price_range": [50, 2000]
+    },
+    "fashion": {
+      "keywords": [
+        "clothing", "apparel", "fashion", "shoes", "dress",
+        "shirt", "pants", "jacket", "style"
+      ],
+      "products": ["T-Shirt", "Jeans", "Sneakers"],
+      "price_range": [20, 200]
+    },
+    "entertainment": {
+      "keywords": [
+        "movie", "entertainment", "streaming", "video", "music",
+        "game", "concert", "book", "podcast"
+      ],
+      "products": ["Netflix Subscription", "Game Console", "Headphones"],
+      "price_range": [10, 500]
+    },
+    "sports": {
+      "keywords": [
+        "sports", "equipment", "bicycle", "tennis", "golf",
+        "running", "soccer", "basketball"
+      ],
+      "products": ["Running Shoes", "Bicycle", "Tennis Racket"],
+      "price_range": [30, 1000]
+    }
+  },
+  "sectors": {
+    "Sector_1A": {"name": "Downtown Urban", "density": "high", "income_level": "high"},
+    "Sector_2A": {"name": "Residential Suburban", "density": "low", "income_level": "medium"},
+    "Sector_3B": {"name": "Mixed Commercial", "density": "medium", "income_level": "medium"},
+    "Sector_4C": {"name": "Industrial", "density": "low", "income_level": "low"},
+    "Sector_5D": {"name": "Educational", "density": "medium", "income_level": "medium"},
+    "Sector_6E": {"name": "Financial District", "density": "high", "income_level": "high"},
+    "Sector_7G": {"name": "Urban Mesh", "density": "very_high", "income_level": "high"}
+  }
+}

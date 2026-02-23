@@ -1,0 +1,42 @@
+simulation:
+  n_users: 100
+  simulation_days: 30
+  start_date: "2026-01-01T00:00:00Z"
+  random_seed: 42
+
+streams:
+  search:
+    enabled: true
+    event_rate: 0.5  # avg events per user per day
+  commerce:
+    enabled: true
+    event_rate: 0.2
+  geo:
+    enabled: true
+    event_rate: 1.0  # mobile only
+  media:
+    enabled: true
+    event_rate: 0.3
+  email:
+    enabled: true
+    event_rate: 0.1
+  social:
+    enabled: true
+    event_rate: 0.2
+
+causal:
+  interest_categories: 10
+  treatment_effect_range: [0.1, 0.3]
+  persistence_factor: 0.7
+  mean_reversion_strength: 0.1
+  noise_std: 0.05
+
+time_patterns:
+  search_peaks: [9, 13, 20]  # hour of day
+  commerce_peaks: [12, 19, 21]
+  media_peaks: [8, 18, 22]
+
+output:
+  export_format: "jsonl"
+  batch_size: 1000
+  checkpoint_interval: 30  # days

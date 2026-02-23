@@ -1,0 +1,56 @@
+datasets:
+  geolife:
+    name: "GeoLife Trajectories"
+    source: "Microsoft Research Asia"
+    usage: "Seed realistic movement patterns, home/work assignments, route priors"
+    layer: "Layer 2: Geo Stream"
+    license: "Academic use"
+
+  instacart:
+    name: "Instacart Online Grocery Dataset"
+    source: "Instacart"
+    usage: "Product taxonomy, reorder behavior, reorder_streak patterns, purchase cadence"
+    layer: "Layer 2: Commerce Stream"
+    license: "CC0 1.0"
+
+  goemotions:
+    name: "GoEmotions Emotion Classification"
+    source: "Google Research"
+    usage: "Map text -> sentiment_cue labels (joy, curiosity, anger, etc.)"
+    layer: "Layer 2: Social / Email / Media Streams"
+    license: "Apache 2.0"
+
+  ipinyou:
+    name: "iPinYou RTB Dataset"
+    source: "Tsinghua University"
+    usage: "Treatment injection (ad exposures), ad cost modeling, campaign budgets"
+    layer: "Layer 2: Media Stream"
+    license: "Academic use"
+
+  snap_social:
+    name: "SNAP Social Networks"
+    source: "Stanford Network Analysis Project"
+    usage: "Contact networks and friend edges for Social Connectivity Score"
+    layer: "Layer 3: Unified User Graph"
+    license: "CC BY 3.0"
+
+  mind_news:
+    name: "MIND: Microsoft News Dataset"
+    source: "Microsoft Research"
+    usage: "News category affinities to tie Search/Media interest categories"
+    layer: "Layer 2: Media Stream"
+    license: "Academic use"
+
+  urban_atlas:
+    name: "Urban Atlas Geospatial Data"
+    source: "Copernicus Programme"
+    usage: "Home Sector / building atlas identifiers and sector taxonomy"
+    layer: "Layer 1: Global Taxonomy"
+    license: "CC BY 4.0"
+
+  uplift_marketing:
+    name: "Marketing Uplift Benchmarks"
+    source: "Meta / Industry Standards"
+    usage: "Ground-truth lift labels and evaluation metrics"
+    layer: "Layer 3: Lift Analyzer"
+    license: "Internal benchmarks"
