@@ -7,6 +7,7 @@ Provides:
 """
 
 import json
+import os
 import webbrowser
 from pathlib import Path
 from typing import Dict, Optional
@@ -28,6 +29,8 @@ from ecosystem_sim.visualization.timeseries_viz import (
     plot_persona_trajectories,
     plot_interest_heatmap,
     plot_treatment_matrix,
+    plot_user_counterfactual_comparison,
+    plot_counterfactual_table,
     render_timeseries_tab,
 )
 from ecosystem_sim.visualization.distribution_viz import (
@@ -56,6 +59,7 @@ def generate_all_visualizations(
     output_dir: str,
     ground_truth_path: Optional[str] = None,
     causal_csv_path: Optional[str] = None,
+    causal_cf_csv_path: Optional[str] = None,
     interaction_graphs_path: Optional[str] = None,
     stitched_data_path: Optional[str] = None,
     lift_report_path: Optional[str] = None,
@@ -71,6 +75,7 @@ def generate_all_visualizations(
         output_dir: Root simulation output directory (e.g. ``ecosystem_sim/outputs``).
         ground_truth_path: Path to ``ground_truth.json``.
         causal_csv_path: Path to ``causal_ground_truth.csv``.
+        causal_cf_csv_path: Path to ``causal_table_with_counterfactual.csv``.
         interaction_graphs_path: Path to ``interaction_graphs.json``.
         stitched_data_path: Path to ``stitched_data.json``.
         lift_report_path: Path to ``lift_report.json``.
@@ -80,11 +85,15 @@ def generate_all_visualizations(
         Dictionary mapping logical keys to the generated HTML file paths.
     """
     out = Path(output_dir)
-    ensure_output_dir(str(out / "viz"))
+    viz_out = out / "viz"
+    ensure_output_dir(str(viz_out))
 
     # Resolve default paths -------------------------------------------------
     gt_path = ground_truth_path or str(out / "ground_truth.json")
     csv_path = causal_csv_path or str(out / "causal_ground_truth.csv")
+    cf_csv_path = causal_cf_csv_path or str(
+        out / "causal_table_with_counterfactual.csv"
+    )
     ig_path = interaction_graphs_path or str(out / "interaction_graphs.json")
     st_path = stitched_data_path or str(out / "stitched_data.json")
     lr_path = lift_report_path or str(out / "lift_report.json")
@@ -112,7 +121,7 @@ def generate_all_visualizations(
 
     ig_data = load_json(ig_path)
     if ig_data:
-        files = plot_interaction_graphs(ig_data, str(out / "viz"), explainer=explainer)
+        files = plot_interaction_graphs(ig_data, str(viz_out), explainer=explainer)
         if files:
             generated["interaction_graphs"] = files[0]  # summary page
         print(f"  * Interaction graphs: {len(files)} pages generated")
@@ -120,7 +129,7 @@ def generate_all_visualizations(
     st_data = load_json(st_path)
     if st_data:
         filepath = plot_device_stitching_graph(
-            st_data, str(out / "viz"), explainer=explainer
+            st_data, str(viz_out), explainer=explainer
         )
         generated["device_stitching"] = filepath
         print(f"  * Device stitching graph: {filepath}")
@@ -128,7 +137,7 @@ def generate_all_visualizations(
     cf_data = load_json(cf_path)
     if cf_data:
         files = plot_counterfactual_comparison(
-            cf_data, str(out / "viz"), explainer=explainer
+            cf_data, str(viz_out), explainer=explainer
         )
         if files:
             generated["counterfactual_comparison"] = files[0]
@@ -138,15 +147,11 @@ def generate_all_visualizations(
     print("\n[VIZ] Generating time-series visualizations...")
 
     if Path(csv_path).exists():
-        result = plot_causal_trajectories(
-            csv_path, str(out / "viz"), explainer=explainer
-        )
+        result = plot_causal_trajectories(csv_path, str(viz_out), explainer=explainer)
         generated["causal_trajectories"] = result
         print(f"  * Causal trajectories: {result}")
 
-        result = plot_persona_trajectories(
-            csv_path, str(out / "viz"), explainer=explainer
-        )
+        result = plot_persona_trajectories(csv_path, str(viz_out), explainer=explainer)
         generated["persona_trajectories"] = result
         print(f"  * Persona trajectories: {result}")
 
@@ -157,46 +162,60 @@ def generate_all_visualizations(
         )
         if interest_matrix:
             result = plot_interest_heatmap(
-                interest_matrix, gt_path, str(out / "viz"), explainer=explainer
+                interest_matrix, gt_path, str(viz_out), explainer=explainer
             )
             generated["interest_heatmap"] = result
             print(f"  * Interest heatmap: {result}")
 
-        result = plot_treatment_matrix(gt_path, str(out / "viz"), explainer=explainer)
+        result = plot_treatment_matrix(gt_path, str(viz_out), explainer=explainer)
         generated["treatment_matrix"] = result
         print(f"  * Treatment matrix: {result}")
+
+    # ── New: Counterfactual comparison visualizations (from dual-column CSV) ──
+    if Path(cf_csv_path).exists():
+        result = plot_user_counterfactual_comparison(
+            cf_csv_path, str(viz_out), explainer=explainer
+        )
+        generated["user_counterfactual_comparison"] = result
+        print(f"  * User counterfactual comparison: {result}")
+
+        result = plot_counterfactual_table(
+            cf_csv_path, str(viz_out), explainer=explainer
+        )
+        generated["counterfactual_table"] = result
+        print(f"  * Counterfactual table: {result}")
 
     # 3. Distribution visualizations ----------------------------------------
     print("\n[VIZ] Generating distribution visualizations...")
 
     lr_data = load_json(lr_path)
     if lr_data:
-        result = plot_lift_deciles(lr_data, str(out / "viz"), explainer=explainer)
+        result = plot_lift_deciles(lr_data, str(viz_out), explainer=explainer)
         generated["lift_deciles"] = result
         print(f"  * Lift deciles: {result}")
 
-        result = plot_qini_curve(lr_data, str(out / "viz"), explainer=explainer)
+        result = plot_qini_curve(lr_data, str(viz_out), explainer=explainer)
         generated["qini_curve"] = result
         print(f"  * Qini curve: {result}")
 
-        result = plot_lift_summary(lr_data, str(out / "viz"), explainer=explainer)
+        result = plot_lift_summary(lr_data, str(viz_out), explainer=explainer)
         generated["lift_summary"] = result
         print(f"  * Lift summary: {result}")
 
     if gt_data:
         result = plot_propensity_distributions(
-            gt_path, str(out / "viz"), explainer=explainer
+            gt_path, str(viz_out), explainer=explainer
         )
         generated["propensity_distributions"] = result
         print(f"  * Propensity distributions: {result}")
 
-        result = plot_price_sensitivity(gt_path, str(out / "viz"), explainer=explainer)
+        result = plot_price_sensitivity(gt_path, str(viz_out), explainer=explainer)
         generated["price_sensitivity"] = result
         print(f"  * Price sensitivity: {result}")
 
     if st_data:
         result = plot_cluster_size_distribution(
-            st_data, str(out / "viz"), explainer=explainer
+            st_data, str(viz_out), explainer=explainer
         )
         generated["cluster_sizes"] = result
         print(f"  * Cluster size distribution: {result}")
@@ -205,25 +224,21 @@ def generate_all_visualizations(
     print("\n[VIZ] Generating report visualizations...")
 
     if cf_data:
-        result = plot_counterfactual_deltas(
-            cf_data, str(out / "viz"), explainer=explainer
-        )
+        result = plot_counterfactual_deltas(cf_data, str(viz_out), explainer=explainer)
         generated["counterfactual_deltas"] = result
         print(f"  * Counterfactual deltas: {result}")
 
-        result = plot_causal_pathways(cf_data, str(out / "viz"), explainer=explainer)
+        result = plot_causal_pathways(cf_data, str(viz_out), explainer=explainer)
         generated["causal_pathways"] = result
         print(f"  * Causal pathways: {result}")
 
     if gt_data:
-        result = plot_ground_truth_summary(
-            gt_path, str(out / "viz"), explainer=explainer
-        )
+        result = plot_ground_truth_summary(gt_path, str(viz_out), explainer=explainer)
         generated["ground_truth_summary"] = result
         print(f"  * Ground truth summary: {result}")
 
     # 5. Generate index page ------------------------------------------------
-    index_path = str(out / "viz" / "index.html")
+    index_path = str(viz_out / "index.html")
     _generate_index_page(generated, index_path)
     generated["index"] = index_path
     print(f"\n[VIZ] Index page: {index_path}")
@@ -245,6 +260,11 @@ def _generate_index_page(generated: Dict[str, str], output_path: str):
             ("Persona Trajectories", generated.get("persona_trajectories")),
             ("Interest Heatmap", generated.get("interest_heatmap")),
             ("Treatment Matrix", generated.get("treatment_matrix")),
+            (
+                "User Counterfactual Comparison",
+                generated.get("user_counterfactual_comparison"),
+            ),
+            ("Counterfactual Table", generated.get("counterfactual_table")),
         ],
         "Distribution Visualizations": [
             ("Lift Deciles", generated.get("lift_deciles")),
@@ -295,7 +315,9 @@ def _generate_index_page(generated: Dict[str, str], output_path: str):
         html_parts.append("  <ul>")
         for label, path in links:
             if path and Path(path).exists():
-                rel = Path(path).name
+                rel = os.path.relpath(path, os.path.dirname(output_path)).replace(
+                    "\\", "/"
+                )
                 html_parts.append(
                     f'    <li><a href="{rel}" target="_blank">{label} <span class="badge">HTML</span></a></li>'
                 )
@@ -371,6 +393,7 @@ def render_dashboard(output_dir: str):
     files = {
         "Ground Truth": out / "ground_truth.json",
         "Causal CSV": out / "causal_ground_truth.csv",
+        "Causal+Counterfactual CSV": out / "causal_table_with_counterfactual.csv",
         "Interaction Graphs": out / "interaction_graphs.json",
         "Stitched Data": out / "stitched_data.json",
         "Lift Report": out / "lift_report.json",

@@ -166,7 +166,7 @@ def plot_interaction_graphs(
     Returns:
         List of generated HTML file paths
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/graphs")
+    viz_dir = ensure_output_dir(output_dir, "graphs")
     generated_files = []
 
     users_data = graph_data.get("users", {})
@@ -210,8 +210,19 @@ def plot_interaction_graphs(
         fig.write_html(str(filepath))
         if explainer:
             html = Path(filepath).read_text(encoding="utf-8")
-            explanation = explainer.explain("interaction_graphs", {"user_id": uid, "n_edges": len(edges)})
-            html = VisualizationExplainer.inject_explanation_button(html, explanation, f"User {uid} Interaction Graph")
+            explanation = explainer.explain(
+                "interaction_graphs",
+                {
+                    "user_id": uid,
+                    "graph": graph,
+                    "edges": edges,
+                    "n_edges": len(edges),
+                    "n_events": graph.get("n_events", 0),
+                },
+            )
+            html = VisualizationExplainer.inject_explanation_button(
+                html, explanation, f"User {uid} Interaction Graph"
+            )
             Path(filepath).write_text(html, encoding="utf-8")
         generated_files.append(str(filepath))
 
@@ -317,7 +328,7 @@ def plot_counterfactual_comparison(
     Returns:
         List of generated HTML file paths
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/counterfactual")
+    viz_dir = ensure_output_dir(output_dir, "counterfactual")
     generated_files = []
 
     scenarios = extract_scenario_metrics(cf_report)
@@ -347,8 +358,19 @@ def plot_counterfactual_comparison(
         # Inject explanation into the first generated file (delta comparison)
         first = generated_files[0]
         html = Path(first).read_text(encoding="utf-8")
-        explanation = explainer.explain("counterfactual_deltas", {"scenarios": list(cf_report.get("scenarios", cf_report.get("worlds", {}).keys()))})
-        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Counterfactual Comparison")
+        explanation = explainer.explain(
+            "counterfactual_deltas",
+            {
+                "cf_report": cf_report,
+                "deltas": deltas,
+                "scenarios": list(
+                    cf_report.get("scenarios", cf_report.get("worlds", {}).keys())
+                ),
+            },
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Counterfactual Comparison"
+        )
         Path(first).write_text(html, encoding="utf-8")
 
     return generated_files
@@ -514,7 +536,7 @@ def plot_device_stitching_graph(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/stitching")
+    viz_dir = ensure_output_dir(output_dir, "stitching")
     clusters = stitched_data.get("clusters", {})
     metrics = stitched_data.get("metrics", {})
 
@@ -571,9 +593,18 @@ def plot_device_stitching_graph(
     fig.write_html(str(filepath))
     if explainer:
         html = Path(filepath).read_text(encoding="utf-8")
-        clusters = stitched_data.get("clusters", stitched_data.get("devices", []))
-        explanation = explainer.explain("device_stitching", {"n_clusters": len(clusters)})
-        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Device Stitching")
+        explanation = explainer.explain(
+            "device_stitching",
+            {
+                "clusters": clusters,
+                "metrics": metrics,
+                "stitched_data": stitched_data,
+                "n_clusters": len(clusters),
+            },
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Device Stitching"
+        )
         Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 

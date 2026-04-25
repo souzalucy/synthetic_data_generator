@@ -303,16 +303,20 @@ class LiftAnalyzer:
         benchmark = self.criteo_benchmarks
 
         comparison = {
-            "observed_uplift": observed_uplift,
-            "benchmark_average": benchmark["average_uplift"],
-            "difference_from_benchmark": observed_uplift - benchmark["average_uplift"],
-            "relative_difference": (observed_uplift - benchmark["average_uplift"])
-            / benchmark["average_uplift"]
-            * 100
-            if benchmark["average_uplift"] > 0
-            else 0,
-            "statistically_significant": p_value < 0.05,
-            "sample_size_adequate": sample_size >= self.min_sample_size,
+            "observed_uplift": float(observed_uplift),
+            "benchmark_average": float(benchmark["average_uplift"]),
+            "difference_from_benchmark": float(
+                observed_uplift - benchmark["average_uplift"]
+            ),
+            "relative_difference": float(
+                (observed_uplift - benchmark["average_uplift"])
+                / benchmark["average_uplift"]
+                * 100
+                if benchmark["average_uplift"] > 0
+                else 0
+            ),
+            "statistically_significant": bool(p_value < 0.05),
+            "sample_size_adequate": bool(sample_size >= self.min_sample_size),
             "benchmark_notes": [],
         }
 
@@ -341,11 +345,11 @@ class LiftAnalyzer:
 
         # Calculate confidence interval
         if sample_size >= 30:
-            se = benchmark["uplift_std"] / math.sqrt(sample_size)
+            se = float(benchmark["uplift_std"]) / math.sqrt(sample_size)
             comparison["confidence_interval"] = {
-                "lower": observed_uplift - 1.96 * se,
-                "upper": observed_uplift + 1.96 * se,
-                "width": 3.92 * se,
+                "lower": float(observed_uplift - 1.96 * se),
+                "upper": float(observed_uplift + 1.96 * se),
+                "width": float(3.92 * se),
             }
 
         return comparison

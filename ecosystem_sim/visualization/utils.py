@@ -148,6 +148,65 @@ def melt_causal_csv(csv_rows: List[Dict]) -> List[Dict]:
     return melted
 
 
+def melt_causal_counterfactual_csv(csv_rows: List[Dict]) -> List[Dict]:
+    """Melt wide-format causal counterfactual CSV to long format for plotting.
+
+    Transforms dual columns:
+      day_X_base_affinity_factual       -> (day, affinity, scenario='factual')
+      day_X_base_affinity_counterfactual -> (day, affinity, scenario='counterfactual')
+
+    Args:
+        csv_rows: List of row dicts from causal_table_with_counterfactual.csv
+
+    Returns:
+        List of dicts with keys: user_id, persona, treatment_effect,
+                                 intervention_type, intervention_value,
+                                 day, affinity, scenario
+    """
+    melted = []
+    for row in csv_rows:
+        user_id = row["user_id"]
+        persona = row["persona"]
+        treatment_effect = float(row.get("treatment_effect", 0))
+        intervention_type = row.get("intervention_type", "")
+        intervention_value = row.get("intervention_value", "")
+
+        for key, val in row.items():
+            if key.startswith("day_") and key.endswith("_base_affinity_factual"):
+                day = int(key.split("_")[1])
+                affinity = float(val) if val else 0.0
+                melted.append(
+                    {
+                        "user_id": user_id,
+                        "persona": persona,
+                        "treatment_effect": treatment_effect,
+                        "intervention_type": intervention_type,
+                        "intervention_value": intervention_value,
+                        "day": day,
+                        "affinity": affinity,
+                        "scenario": "factual",
+                    }
+                )
+            elif key.startswith("day_") and key.endswith(
+                "_base_affinity_counterfactual"
+            ):
+                day = int(key.split("_")[1])
+                affinity = float(val) if val else 0.0
+                melted.append(
+                    {
+                        "user_id": user_id,
+                        "persona": persona,
+                        "treatment_effect": treatment_effect,
+                        "intervention_type": intervention_type,
+                        "intervention_value": intervention_value,
+                        "day": day,
+                        "affinity": affinity,
+                        "scenario": "counterfactual",
+                    }
+                )
+    return melted
+
+
 def extract_decile_data(lift_report: Dict) -> List[Dict]:
     """Extract and validate decile data from lift report.
 

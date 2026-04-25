@@ -39,7 +39,7 @@ def plot_lift_deciles(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/distributions")
+    viz_dir = ensure_output_dir(output_dir, "distributions")
     deciles = extract_decile_data(lift_report)
 
     if not deciles:
@@ -102,8 +102,13 @@ def plot_lift_deciles(
     fig.write_html(str(filepath))
     if explainer:
         html = Path(filepath).read_text(encoding="utf-8")
-        explanation = explainer.explain("lift_deciles", {"n_deciles": len(deciles)})
-        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Lift Deciles")
+        explanation = explainer.explain(
+            "lift_deciles",
+            {"deciles": deciles, "lift_report": lift_report},
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Lift Deciles"
+        )
         Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
@@ -125,7 +130,7 @@ def plot_qini_curve(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/distributions")
+    viz_dir = ensure_output_dir(output_dir, "distributions")
     deciles = extract_decile_data(lift_report)
 
     if not deciles:
@@ -227,8 +232,10 @@ def plot_qini_curve(
     fig.write_html(str(filepath))
     if explainer:
         html = Path(filepath).read_text(encoding="utf-8")
-        explanation = explainer.explain("qini_curve", {"has_qini_coefficient": "qini_coefficient" in lift_report})
-        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Qini Curve")
+        explanation = explainer.explain("qini_curve", lift_report)
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Qini Curve"
+        )
         Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
@@ -247,7 +254,7 @@ def plot_lift_summary(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/distributions")
+    viz_dir = ensure_output_dir(output_dir, "distributions")
 
     lift_pct = lift_report.get("lift_percent", 0)
     p_value = lift_report.get("p_value", 1.0)
@@ -372,8 +379,10 @@ def plot_lift_summary(
     fig.write_html(str(filepath))
     if explainer:
         html = Path(filepath).read_text(encoding="utf-8")
-        explanation = explainer.explain("lift_summary", {"auuc": lift_report.get("auuc"), "qini_coefficient": lift_report.get("qini_coefficient")})
-        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Lift Summary")
+        explanation = explainer.explain("lift_summary", lift_report)
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Lift Summary"
+        )
         Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
@@ -398,7 +407,7 @@ def plot_propensity_distributions(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/distributions")
+    viz_dir = ensure_output_dir(output_dir, "distributions")
     gt = load_json(ground_truth_path)
 
     if not gt:
@@ -497,8 +506,13 @@ def plot_propensity_distributions(
     fig.write_html(str(filepath))
     if explainer:
         html = Path(filepath).read_text(encoding="utf-8")
-        explanation = explainer.explain("propensity_distributions", {"n_users": len(users)})
-        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Propensity Distributions")
+        explanation = explainer.explain(
+            "propensity_distributions",
+            {"users": users, "gt": gt},
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Propensity Distributions"
+        )
         Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
@@ -520,7 +534,7 @@ def plot_cluster_size_distribution(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/distributions")
+    viz_dir = ensure_output_dir(output_dir, "distributions")
     clusters = stitched_data.get("clusters", {})
     metrics = stitched_data.get("metrics", {})
 
@@ -588,9 +602,13 @@ def plot_cluster_size_distribution(
     fig.write_html(str(filepath))
     if explainer:
         html = Path(filepath).read_text(encoding="utf-8")
-        clusters = stitched_data.get("clusters", stitched_data.get("devices", []))
-        explanation = explainer.explain("cluster_size_distribution", {"n_clusters": len(clusters)})
-        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Cluster Size Distribution")
+        explanation = explainer.explain(
+            "cluster_size_distribution",
+            {"clusters": clusters, "metrics": metrics, "stitched_data": stitched_data},
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Cluster Size Distribution"
+        )
         Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
@@ -615,7 +633,7 @@ def plot_price_sensitivity(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/distributions")
+    viz_dir = ensure_output_dir(output_dir, "distributions")
     gt = load_json(ground_truth_path)
 
     if not gt:
@@ -716,8 +734,13 @@ def plot_price_sensitivity(
     fig.write_html(str(filepath))
     if explainer:
         html = Path(filepath).read_text(encoding="utf-8")
-        explanation = explainer.explain("price_sensitivity", {"n_users": len(users)})
-        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Price Sensitivity")
+        explanation = explainer.explain(
+            "price_sensitivity",
+            {"users": users, "gt": gt},
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Price Sensitivity"
+        )
         Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 

@@ -4,7 +4,7 @@ import json
 import yaml
 import argparse
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import numpy as np
 from tqdm import tqdm
 
@@ -35,6 +35,29 @@ from ecosystem_sim.intelligence import (
     LiftAnalyzer,
 )
 from ecosystem_sim.visualization.dashboard import generate_all_visualizations
+
+
+def _convert_to_native(obj: Any) -> Any:
+    """Recursively convert NumPy types to native Python types for JSON serialization.
+
+    This handles numpy.bool_, numpy.integer, numpy.floating, numpy.ndarray,
+    and any nested structures containing them.
+    """
+    if isinstance(obj, dict):
+        return {k: _convert_to_native(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_to_native(v) for v in obj]
+    elif isinstance(obj, tuple):
+        return tuple(_convert_to_native(v) for v in obj)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return _convert_to_native(obj.tolist())
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    return obj
 
 
 def load_config(config_path: str) -> Dict:
@@ -211,6 +234,24 @@ def run_simulation(config: Dict, output_dir: str):
     causal_engine.export_causal_table(str(causal_table_path), interest_matrix)
     print(f"  * Exported causal ground truth table to {causal_table_path}")
 
+    # Export causal table with counterfactual (dual columns: factual + counterfactual)
+    # Uses time-localized intervention: treatment is zeroed from campaign_day onward
+    campaign_day = config.get("intelligence", {}).get("campaign_day", 14)
+    counterfactual_matrix = (
+        causal_engine.generate_time_localized_no_treatment_counterfactual(
+            interest_matrix, intervention_day=campaign_day
+        )
+    )
+    causal_cf_table_path = output_path / "causal_table_with_counterfactual.csv"
+    causal_engine.export_causal_table_with_counterfactual(
+        str(causal_cf_table_path),
+        interest_matrix,
+        counterfactual_matrix,
+        intervention_type="no_treatment",
+        intervention_value=f"do(T=0 from day {campaign_day})",
+    )
+    print(f"  * Exported causal table with counterfactual to {causal_cf_table_path}")
+
     # Phase 3: Event generation loop
     print("\n[PHASE 3] Generating events (this may take a while)...")
 
@@ -294,11 +335,13 @@ def run_simulation(config: Dict, output_dir: str):
     stitched_path = output_path / "stitched_data.json"
     with open(stitched_path, "w") as f:
         json.dump(
-            {
-                "clusters": stitched_data["device_clusters"],
-                "metrics": stitched_data["metrics"],
-                "inferred_user_ids": stitched_data.get("inferred_user_ids", {}),
-            },
+            _convert_to_native(
+                {
+                    "clusters": stitched_data["device_clusters"],
+                    "metrics": stitched_data["metrics"],
+                    "inferred_user_ids": stitched_data.get("inferred_user_ids", {}),
+                }
+            ),
             f,
             indent=2,
         )
@@ -341,30 +384,7 @@ def run_simulation(config: Dict, output_dir: str):
 
     lift_path = output_path / "lift_report.json"
     with open(lift_path, "w") as f:
-        # Convert numpy types to native Python types for JSON serialization
-        report_copy = {
-            "campaign_id": lift_report["campaign_id"],
-            "lift_percent": float(lift_report["lift_percent"]),
-            "p_value": float(lift_report["p_value"]),
-            "auuc": float(lift_report["auuc"]),
-            "qini_coefficient": float(lift_report.get("qini_coefficient", 0)),
-            "n_exposed_users": len(lift_report["exposed_users"]),
-            "exposed_users": [
-                {k: float(v) if isinstance(v, (int, float)) else v
-                 for k, v in u.items()}
-                for u in lift_report["exposed_users"]
-            ],
-            "uplift_by_decile": [
-                {k: float(v) if isinstance(v, (int, float)) else v
-                 for k, v in d.items()}
-                for d in lift_report.get("uplift_by_decile", [])
-            ],
-            "criteo_benchmark_comparison": {
-                k: float(v) if isinstance(v, (int, float)) else v
-                for k, v in lift_report.get("criteo_benchmark_comparison", {}).items()
-            },
-        }
-        json.dump(report_copy, f, indent=2)
+        json.dump(_convert_to_native(lift_report), f, indent=2)
 
     print(
         f"  * Campaign lift: {lift_report['lift_percent']:.1f}% (p={lift_report['p_value']:.4f})"
@@ -383,6 +403,7 @@ def run_simulation(config: Dict, output_dir: str):
             causal_engine=causal_engine,
             users=users,
             factual_interest_matrix=interest_matrix,
+            intervention_day=campaign_day,
         )
 
         # Export counterfactual report
@@ -415,7 +436,7 @@ def run_simulation(config: Dict, output_dir: str):
         for scenario_name, scenario_data in cf_report.get("scenarios", {}).items():
             scenario_path = cf_graphs_dir / f"{scenario_name}_metrics.json"
             with open(scenario_path, "w") as f:
-                json.dump(scenario_data, f, indent=2)
+                json.dump(_convert_to_native(scenario_data), f, indent=2)
 
         print(
             f"  * Exported {len(cf_report.get('scenarios', {}))} scenario graph metrics"
@@ -431,6 +452,7 @@ def run_simulation(config: Dict, output_dir: str):
             output_dir=str(output_path),
             ground_truth_path=str(ground_truth_path),
             causal_csv_path=str(causal_table_path),
+            causal_cf_csv_path=str(causal_cf_table_path),
             interaction_graphs_path=str(ig_path),
             stitched_data_path=str(stitched_path),
             lift_report_path=str(lift_path),

@@ -53,6 +53,7 @@ class CounterfactualGraphStitcher(GraphStitcher):
         users: List,
         factual_interest_matrix: np.ndarray,
         events_by_scenario: Optional[Dict[str, List[Dict]]] = None,
+        intervention_day: int = 14,
     ) -> Dict[str, Any]:
         """Generate interaction graphs for all counterfactual scenarios.
 
@@ -64,6 +65,9 @@ class CounterfactualGraphStitcher(GraphStitcher):
             users: List of User objects
             factual_interest_matrix: Factual interest trajectory matrix
             events_by_scenario: Optional pre-generated events per scenario
+            intervention_day: Day at which the intervention (marketing action)
+                occurs. Before this day, trajectories match the factual world.
+                Default: 14.
 
         Returns:
             Dict with keys:
@@ -72,7 +76,9 @@ class CounterfactualGraphStitcher(GraphStitcher):
               - "causal_pathways": List[Dict] - discovered causal pathways
         """
         # Define scenarios to generate
-        scenarios = self._define_scenarios(causal_engine, factual_interest_matrix)
+        scenarios = self._define_scenarios(
+            causal_engine, factual_interest_matrix, intervention_day
+        )
 
         # Build graphs for each scenario
         self.scenario_graphs = {}
@@ -113,8 +119,19 @@ class CounterfactualGraphStitcher(GraphStitcher):
         self,
         causal_engine,
         factual_interest_matrix: np.ndarray,
+        intervention_day: int = 14,
     ) -> Dict[str, np.ndarray]:
         """Define counterfactual scenarios and generate their interest matrices.
+
+        All counterfactual scenarios branch from the factual trajectory at
+        intervention_day, meaning the intervention (marketing action) occurs
+        at that point in time. Everything before intervention_day is kept
+        identical to the factual world.
+
+        Args:
+            causal_engine: CausalEngine instance with time-localized methods
+            factual_interest_matrix: Factual interest trajectory matrix
+            intervention_day: Day at which the intervention occurs
 
         Returns:
             Dict mapping scenario name -> interest matrix
@@ -123,22 +140,26 @@ class CounterfactualGraphStitcher(GraphStitcher):
             "factual": factual_interest_matrix,
         }
 
-        # Scenario: No treatment (do(T=0))
+        # Scenario: No treatment from intervention_day onward (do(T=0))
         scenarios["no_treatment"] = (
-            causal_engine.generate_no_treatment_counterfactual()
+            causal_engine.generate_time_localized_no_treatment_counterfactual(
+                factual_interest_matrix, intervention_day
+            )
         )
 
-        # Scenario: Double treatment (do(T=2T))
+        # Scenario: Double treatment from intervention_day onward (do(T=2T))
         scenarios["double_treatment"] = (
-            causal_engine.generate_double_treatment_counterfactual()
+            causal_engine.generate_time_localized_double_treatment_counterfactual(
+                factual_interest_matrix, intervention_day
+            )
         )
 
-        # Scenario: Optimal targeted treatment
+        # Scenario: Optimal targeted treatment (keeps global do-operator for now)
         scenarios["optimal_treatment"] = (
             causal_engine.generate_optimal_treatment_counterfactual(threshold=0.5)
         )
 
-        # Scenario: Confounder shift (do(Z=Z+0.2))
+        # Scenario: Confounder shift (keeps global do-operator for now)
         scenarios["confounder_shift"] = (
             causal_engine.generate_confounder_intervention_counterfactual(shift=0.2)
         )
@@ -311,7 +332,9 @@ class CounterfactualGraphStitcher(GraphStitcher):
             pathway = {
                 "scenario": scenario_name,
                 "pathway_name": definition.get("name", scenario_name),
-                "label": definition.get("label", scenario_name.replace("_", " ").title()),
+                "label": definition.get(
+                    "label", scenario_name.replace("_", " ").title()
+                ),
                 "description": definition.get(
                     "description", f"Effect of {scenario_name} intervention"
                 ),
@@ -327,24 +350,18 @@ class CounterfactualGraphStitcher(GraphStitcher):
                         "factual": f_val,
                         "counterfactual": cf_val,
                         "absolute_change": round(cf_val - f_val, 4),
-                        "relative_change_pct": round(
-                            (cf_val - f_val) / f_val * 100, 2
-                        ),
+                        "relative_change_pct": round((cf_val - f_val) / f_val * 100, 2),
                     }
 
             # Interpret the effect
-            pathway["interpretation"] = self._interpret_pathway(
-                pathway, definition
-            )
+            pathway["interpretation"] = self._interpret_pathway(pathway, definition)
 
             pathways.append(pathway)
 
         # Sort by absolute effect size (most impactful first)
         pathways.sort(
             key=lambda p: abs(
-                p["effect_sizes"]
-                .get("total_edges", {})
-                .get("relative_change_pct", 0)
+                p["effect_sizes"].get("total_edges", {}).get("relative_change_pct", 0)
             ),
             reverse=True,
         )
@@ -352,9 +369,7 @@ class CounterfactualGraphStitcher(GraphStitcher):
         return pathways
 
     @staticmethod
-    def _interpret_pathway(
-        pathway: Dict, definition: Dict
-    ) -> str:
+    def _interpret_pathway(pathway: Dict, definition: Dict) -> str:
         """Generate a human-readable interpretation of a causal pathway.
 
         Args:
@@ -375,7 +390,13 @@ class CounterfactualGraphStitcher(GraphStitcher):
             )
 
         direction = "increases" if rel_change > 0 else "decreases"
-        magnitude = "strong" if abs(rel_change) > 20 else "moderate" if abs(rel_change) > 5 else "weak"
+        magnitude = (
+            "strong"
+            if abs(rel_change) > 20
+            else "moderate"
+            if abs(rel_change) > 5
+            else "weak"
+        )
 
         consistent = (rel_change > 0 and expected_sign > 0) or (
             rel_change < 0 and expected_sign < 0
@@ -481,9 +502,7 @@ class CounterfactualGraphStitcher(GraphStitcher):
     # Export
     # ------------------------------------------------------------------
 
-    def export_counterfactual_report(
-        self, report_data: Dict, output_path: str
-    ):
+    def export_counterfactual_report(self, report_data: Dict, output_path: str):
         """Export the full counterfactual analysis report as JSON.
 
         Args:
@@ -491,9 +510,7 @@ class CounterfactualGraphStitcher(GraphStitcher):
             output_path: Path to output JSON file
         """
         # Convert numpy types for JSON serialization
-        cleaned = json.loads(
-            json.dumps(report_data, default=self._json_serialize)
-        )
+        cleaned = json.loads(json.dumps(report_data, default=self._json_serialize))
 
         with open(output_path, "w") as f:
             json.dump(cleaned, f, indent=2)

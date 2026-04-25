@@ -48,7 +48,7 @@ def plot_counterfactual_deltas(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/reports")
+    viz_dir = ensure_output_dir(output_dir, "reports")
     scenarios = extract_scenario_metrics(cf_report)
     deltas = extract_deltas(cf_report)
     pathways = extract_causal_pathways(cf_report)
@@ -233,9 +233,18 @@ def plot_counterfactual_deltas(
     fig.write_html(str(filepath))
     if explainer:
         html = Path(filepath).read_text(encoding="utf-8")
-        deltas = extract_deltas(cf_report)
-        explanation = explainer.explain("counterfactual_deltas", {"scenarios": list(deltas.keys()) if deltas else []})
-        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Counterfactual Deltas")
+        explanation = explainer.explain(
+            "counterfactual_deltas",
+            {
+                "cf_report": cf_report,
+                "scenarios": scenarios,
+                "deltas": deltas,
+                "pathways": pathways,
+            },
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Counterfactual Deltas"
+        )
         Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
@@ -263,7 +272,7 @@ def plot_ground_truth_summary(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/reports")
+    viz_dir = ensure_output_dir(output_dir, "reports")
     gt = load_json(ground_truth_path)
 
     if not gt:
@@ -412,8 +421,20 @@ def plot_ground_truth_summary(
     fig.write_html(str(filepath))
     if explainer:
         html = Path(filepath).read_text(encoding="utf-8")
-        explanation = explainer.explain("ground_truth_summary", {"n_users": len(gt.get("users", [])), "n_days": gt.get("config", {}).get("n_days", 0)})
-        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Ground Truth Summary")
+        explanation = explainer.explain(
+            "ground_truth_summary",
+            {
+                "gt": gt,
+                "users": users,
+                "config": config,
+                "stats": stats,
+                "n_users": len(users),
+                "n_days": config.get("n_days", 0),
+            },
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Ground Truth Summary"
+        )
         Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
@@ -435,7 +456,7 @@ def plot_causal_pathways(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/reports")
+    viz_dir = ensure_output_dir(output_dir, "reports")
     pathways = extract_causal_pathways(cf_report)
 
     if not pathways:
@@ -519,9 +540,17 @@ def plot_causal_pathways(
     fig.write_html(str(filepath))
     if explainer:
         html = Path(filepath).read_text(encoding="utf-8")
-        pathways = extract_causal_pathways(cf_report)
-        explanation = explainer.explain("causal_pathways", {"n_pathways": len(pathways)})
-        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Causal Pathways")
+        explanation = explainer.explain(
+            "causal_pathways",
+            {
+                "cf_report": cf_report,
+                "pathways": pathways,
+                "n_pathways": len(pathways),
+            },
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Causal Pathways"
+        )
         Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 

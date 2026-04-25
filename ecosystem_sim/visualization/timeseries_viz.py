@@ -1,11 +1,12 @@
 """Time-series visualizations for causal interest trajectories, treatment matrices,
-and persona-level trend analysis.
+persona-level trend analysis, and per-user factual vs counterfactual comparisons.
 
-Uses Plotly Express for interactive line charts, heatmaps, and area plots.
+Uses Plotly Express for interactive line charts, heatmaps, area plots,
+and per-user subplot grids with delta shading.
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 
 import numpy as np
 import pandas as pd
@@ -17,7 +18,9 @@ from .utils import (
     load_json,
     load_csv_to_dicts,
     melt_causal_csv,
+    melt_causal_counterfactual_csv,
     get_persona_color,
+    get_scenario_color,
     ensure_output_dir,
 )
 from ecosystem_sim.intelligence.explanation_agent import VisualizationExplainer
@@ -46,7 +49,7 @@ def plot_causal_trajectories(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/timeseries")
+    viz_dir = ensure_output_dir(output_dir, "timeseries")
     csv_rows = load_csv_to_dicts(csv_path)
 
     if not csv_rows:
@@ -162,9 +165,11 @@ def plot_causal_trajectories(
         explanation = explainer.explain(
             "causal_trajectories",
             {
+                "df": df,
+                "unique_users": unique_users,
                 "n_users": len(unique_users),
                 "n_personas": len(df["persona"].unique()),
-                "n_days": df["day"].max(),
+                "n_days": int(df["day"].max()),
             },
         )
         html = VisualizationExplainer.inject_explanation_button(
@@ -188,7 +193,7 @@ def plot_persona_trajectories(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/timeseries")
+    viz_dir = ensure_output_dir(output_dir, "timeseries")
     csv_rows = load_csv_to_dicts(csv_path)
 
     if not csv_rows:
@@ -269,12 +274,260 @@ def plot_persona_trajectories(
         html = Path(filepath).read_text(encoding="utf-8")
         explanation = explainer.explain(
             "persona_trajectories",
-            {"n_personas": len(personas), "n_days": df["day"].max()},
+            {
+                "df": df,
+                "personas": list(personas),
+                "n_personas": len(personas),
+                "n_days": int(df["day"].max()),
+            },
         )
         html = VisualizationExplainer.inject_explanation_button(
             html, explanation, "Persona Trajectories"
         )
         Path(filepath).write_text(html, encoding="utf-8")
+    return str(filepath)
+
+
+# ── Per-User Factual vs Counterfactual Comparison ──────────────────────────
+
+
+def plot_user_counterfactual_comparison(
+    csv_path: str,
+    output_dir: str,
+    max_users: int = 12,
+    max_days: Optional[int] = None,
+    explainer: Optional["VisualizationExplainer"] = None,
+) -> str:
+    """Create a grid of per-user subplots comparing factual vs counterfactual trajectories.
+
+    Each subplot shows:
+      - Solid blue line for factual base affinity
+      - Dashed orange line for counterfactual base affinity
+      - Semi-transparent delta shading between curves
+      - Title showing user_id and persona_type
+      - Unified hover with factual, counterfactual, and delta values
+
+    Args:
+        csv_path: Path to causal_table_with_counterfactual.csv
+        output_dir: Output directory for HTML files
+        max_users: Maximum number of users to show (default 12, creates a 4×3 grid)
+        max_days: Optional cap on days to display (None = all days)
+        explainer: Optional VisualizationExplainer for AI explanations
+
+    Returns:
+        Path to generated HTML file
+    """
+    viz_dir = ensure_output_dir(output_dir, "timeseries")
+    csv_rows = load_csv_to_dicts(csv_path)
+
+    if not csv_rows:
+        fig = go.Figure()
+        fig.update_layout(title="No Counterfactual Comparison Data Available")
+        filepath = viz_dir / "user_counterfactual_comparison.html"
+        fig.write_html(str(filepath))
+        return str(filepath)
+
+    # Melt the dual-column CSV to long format
+    melted = melt_causal_counterfactual_csv(csv_rows)
+    df = pd.DataFrame(melted)
+
+    # Determine unique users
+    unique_users = df["user_id"].unique()
+    if len(unique_users) > max_users:
+        # Sample deterministically for reproducibility
+        rng = np.random.default_rng(42)
+        selected_users = list(rng.choice(unique_users, max_users, replace=False))
+    else:
+        selected_users = list(unique_users)
+
+    # Build a lookup: user_id -> persona
+    user_persona_map = (
+        df[["user_id", "persona"]]
+        .drop_duplicates()
+        .set_index("user_id")["persona"]
+        .to_dict()
+    )
+
+    n_users = len(selected_users)
+    n_cols = min(4, n_users)
+    n_rows = int(np.ceil(n_users / n_cols))
+
+    # Cap days if requested
+    if max_days is not None:
+        df = df[df["day"] < max_days]
+
+    fig = make_subplots(
+        rows=n_rows,
+        cols=n_cols,
+        subplot_titles=[
+            f"{uid}<br><sup>{user_persona_map.get(uid, '')}</sup>"
+            for uid in selected_users
+        ],
+        shared_xaxes=True,
+        shared_yaxes=True,
+        vertical_spacing=0.12,
+        horizontal_spacing=0.06,
+    )
+
+    for idx, uid in enumerate(selected_users):
+        row = idx // n_cols + 1
+        col = idx % n_cols + 1
+
+        user_df = df[df["user_id"] == uid]
+
+        # Split by scenario
+        factual = user_df[user_df["scenario"] == "factual"].sort_values("day")
+        counterfactual = user_df[user_df["scenario"] == "counterfactual"].sort_values(
+            "day"
+        )
+
+        if factual.empty or counterfactual.empty:
+            continue
+
+        days_f = factual["day"].values
+        aff_f = factual["affinity"].values
+        days_cf = counterfactual["day"].values
+        aff_cf = counterfactual["affinity"].values
+
+        # Compute delta = counterfactual - factual (interpolated to common days)
+        common_days = np.intersect1d(days_f, days_cf)
+        f_interp = np.interp(common_days, days_f, aff_f)
+        cf_interp = np.interp(common_days, days_cf, aff_cf)
+        deltas = cf_interp - f_interp
+
+        # ── Factual line (solid blue) ──
+        fig.add_trace(
+            go.Scatter(
+                x=days_f,
+                y=aff_f,
+                mode="lines",
+                name=f"{uid} factual",
+                line=dict(color="#636EFA", width=2),
+                legendgroup=f"factual_{uid}",
+                showlegend=(idx == 0),
+                hovertemplate=(
+                    f"<b>%{{x}}</b><br>Factual: %{{y:.4f}}<br><extra></extra>"
+                ),
+            ),
+            row=row,
+            col=col,
+        )
+
+        # ── Counterfactual line (dashed orange) ──
+        fig.add_trace(
+            go.Scatter(
+                x=days_cf,
+                y=aff_cf,
+                mode="lines",
+                name=f"{uid} counterfactual",
+                line=dict(color="#FF8C00", width=2, dash="dash"),
+                legendgroup=f"counterfactual_{uid}",
+                showlegend=(idx == 0),
+                hovertemplate=(
+                    f"<b>%{{x}}</b><br>Counterfactual: %{{y:.4f}}<br><extra></extra>"
+                ),
+            ),
+            row=row,
+            col=col,
+        )
+
+        # ── Delta shading (semi-transparent fill between curves) ──
+        # Build a combined polygon: factual forward, counterfactual backward
+        all_days = np.concatenate([common_days, common_days[::-1]])
+        all_y = np.concatenate([f_interp, cf_interp[::-1]])
+
+        fig.add_trace(
+            go.Scatter(
+                x=all_days,
+                y=all_y,
+                fill="toself",
+                fillcolor="rgba(255, 140, 0, 0.15)",
+                line=dict(color="rgba(255,255,255,0)"),
+                name=f"{uid} delta",
+                legendgroup=f"delta_{uid}",
+                showlegend=(idx == 0),
+                hoverinfo="skip",
+            ),
+            row=row,
+            col=col,
+        )
+
+        # ── Add a custom hover trace for delta values (invisible points) ──
+        fig.add_trace(
+            go.Scatter(
+                x=common_days,
+                y=(f_interp + cf_interp) / 2,  # midpoint for hover placement
+                mode="markers",
+                marker=dict(size=0, opacity=0),
+                name=f"{uid} delta hover",
+                legendgroup=f"delta_hover_{uid}",
+                showlegend=False,
+                hovertemplate=(
+                    "<b>Day %{x}</b><br>"
+                    f"Factual: %{{customdata[0]:.4f}}<br>"
+                    f"Counterfactual: %{{customdata[1]:.4f}}<br>"
+                    f"Delta: %{{customdata[2]:.4f}}<br>"
+                    "<extra></extra>"
+                ),
+                customdata=np.column_stack([f_interp, cf_interp, deltas]),
+            ),
+            row=row,
+            col=col,
+        )
+
+    # Update layout
+    fig.update_layout(
+        title="Per-User Factual vs Counterfactual Comparison",
+        title_x=0.5,
+        height=250 * n_rows,
+        width=300 * n_cols,
+        plot_bgcolor="rgba(0,0,0,0)",
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5,
+        ),
+    )
+
+    # Add a horizontal reference line at y=0 for delta context
+    fig.update_yaxes(
+        title_text="Base Affinity", zeroline=True, zerolinecolor="rgba(0,0,0,0.1)"
+    )
+
+    # Label only bottom-row x-axes
+    for i in range(n_users):
+        r = i // n_cols + 1
+        c = i % n_cols + 1
+        if r < n_rows:
+            fig.update_xaxes(showticklabels=False, row=r, col=c)
+        else:
+            fig.update_xaxes(title_text="Day", row=r, col=c)
+
+    filepath = viz_dir / "user_counterfactual_comparison.html"
+    fig.write_html(str(filepath))
+
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        explanation = explainer.explain(
+            "user_counterfactual_comparison",
+            {
+                "df": df,
+                "selected_users": selected_users,
+                "n_users": n_users,
+                "n_days": int(df["day"].max()) if not df.empty else 0,
+                "intervention_type": csv_rows[0].get("intervention_type", "unknown")
+                if csv_rows
+                else "unknown",
+            },
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "User Counterfactual Comparison"
+        )
+        Path(filepath).write_text(html, encoding="utf-8")
+
     return str(filepath)
 
 
@@ -297,7 +550,7 @@ def plot_interest_heatmap(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/timeseries")
+    viz_dir = ensure_output_dir(output_dir, "timeseries")
 
     if interest_matrix is None and ground_truth_path:
         # Try to reconstruct from ground truth (limited info)
@@ -346,6 +599,7 @@ def plot_interest_heatmap(
         explanation = explainer.explain(
             "interest_heatmap",
             {
+                "avg_interest": avg_interest,
                 "n_days": n_days,
                 "n_categories": n_cats,
                 "mean_interest": float(avg_interest.mean()),
@@ -375,7 +629,7 @@ def plot_treatment_matrix(
     Returns:
         Path to generated HTML file
     """
-    viz_dir = ensure_output_dir(output_dir, "viz/timeseries")
+    viz_dir = ensure_output_dir(output_dir, "timeseries")
     gt = load_json(ground_truth_path)
 
     if not gt:
@@ -444,6 +698,9 @@ def plot_treatment_matrix(
         explanation = explainer.explain(
             "treatment_matrix",
             {
+                "users": users,
+                "treatment_effects": treatment_effects,
+                "base_affinities": base_affinities,
                 "n_users": len(users),
                 "n_days": n_days,
                 "mean_treatment_effect": float(np.mean(treatment_effects)),
@@ -454,6 +711,172 @@ def plot_treatment_matrix(
             html, explanation, "Treatment Matrix"
         )
         Path(filepath).write_text(html, encoding="utf-8")
+    return str(filepath)
+
+
+# ── Counterfactual Table Visualization (Layer 1 User Table) ────────────────
+
+
+def plot_counterfactual_table(
+    csv_path: str,
+    output_dir: str,
+    max_users: int = 20,
+    sample_days: Optional[int] = None,
+    explainer: Optional["VisualizationExplainer"] = None,
+) -> str:
+    """Create a color-coded Plotly table comparing factual vs counterfactual affinities.
+
+    Columns: user_id, persona, intervention_type, intervention_value,
+             day_0_factual, day_0_counterfactual, day_0_delta, ...
+
+    Cells are color-coded: green for positive delta, red for negative, gray for neutral.
+
+    Args:
+        csv_path: Path to causal_table_with_counterfactual.csv
+        output_dir: Output directory for HTML files
+        max_users: Maximum number of users to display
+        sample_days: Optional number of days to sample (e.g. every 7th day) to keep table readable
+
+    Returns:
+        Path to generated HTML file
+    """
+    viz_dir = ensure_output_dir(output_dir, "timeseries")
+    csv_rows = load_csv_to_dicts(csv_path)
+
+    if not csv_rows:
+        fig = go.Figure()
+        fig.update_layout(title="No Counterfactual Table Data Available")
+        filepath = viz_dir / "counterfactual_table.html"
+        fig.write_html(str(filepath))
+        return str(filepath)
+
+    # Limit users
+    if len(csv_rows) > max_users:
+        rng = np.random.default_rng(42)
+        indices = rng.choice(len(csv_rows), max_users, replace=False)
+        csv_rows = [csv_rows[i] for i in indices]
+
+    # Determine which day columns exist
+    all_keys = list(csv_rows[0].keys())
+    factual_keys = sorted(
+        [k for k in all_keys if k.endswith("_base_affinity_factual")],
+        key=lambda x: int(x.split("_")[1]),
+    )
+    counterfactual_keys = sorted(
+        [k for k in all_keys if k.endswith("_base_affinity_counterfactual")],
+        key=lambda x: int(x.split("_")[1]),
+    )
+
+    # Sample days if requested
+    if sample_days is not None:
+        step = max(1, len(factual_keys) // sample_days)
+        factual_keys = factual_keys[::step]
+        counterfactual_keys = counterfactual_keys[::step]
+
+    # Build header
+    headers = ["user_id", "persona", "intervention_type", "intervention_value"]
+    day_labels = []
+    for fk in factual_keys:
+        day_num = fk.split("_")[1]
+        day_labels.append(day_num)
+        headers.append(f"Day {day_num}<br>Factual")
+        headers.append(f"Day {day_num}<br>Counterfactual")
+        headers.append(f"Day {day_num}<br>Δ")
+
+    # Build cell values and colors
+    cell_values = {h: [] for h in headers}
+    cell_colors = {h: [] for h in headers}
+
+    for row in csv_rows:
+        cell_values["user_id"].append(row["user_id"])
+        cell_values["persona"].append(row["persona"])
+        cell_values["intervention_type"].append(row.get("intervention_type", ""))
+        cell_values["intervention_value"].append(row.get("intervention_value", ""))
+
+        for fk, cfk, day_num in zip(factual_keys, counterfactual_keys, day_labels):
+            f_val = float(row.get(fk, 0))
+            cf_val = float(row.get(cfk, 0))
+            delta = cf_val - f_val
+
+            # Factual cell
+            cell_values[f"Day {day_num}<br>Factual"].append(f"{f_val:.4f}")
+            cell_colors[f"Day {day_num}<br>Factual"].append("white")
+
+            # Counterfactual cell
+            cell_values[f"Day {day_num}<br>Counterfactual"].append(f"{cf_val:.4f}")
+            cell_colors[f"Day {day_num}<br>Counterfactual"].append("white")
+
+            # Delta cell with color coding
+            cell_values[f"Day {day_num}<br>Δ"].append(f"{delta:+.4f}")
+            if delta > 0.01:
+                cell_colors[f"Day {day_num}<br>Δ"].append(
+                    "rgba(0, 200, 83, 0.2)"
+                )  # green
+            elif delta < -0.01:
+                cell_colors[f"Day {day_num}<br>Δ"].append(
+                    "rgba(255, 82, 82, 0.2)"
+                )  # red
+            else:
+                cell_colors[f"Day {day_num}<br>Δ"].append(
+                    "rgba(200, 200, 200, 0.2)"
+                )  # gray
+
+    # Build the table
+    table_data = [cell_values[h] for h in headers]
+    table_colors = [cell_colors[h] for h in headers]
+
+    fig = go.Figure(
+        data=[
+            go.Table(
+                header=dict(
+                    values=headers,
+                    align="center",
+                    font=dict(size=10, color="white"),
+                    fill_color="#2c3e50",
+                    height=40,
+                ),
+                cells=dict(
+                    values=table_data,
+                    align="center",
+                    font=dict(size=9),
+                    fill_color=table_colors,
+                    height=25,
+                ),
+            )
+        ]
+    )
+
+    fig.update_layout(
+        title=dict(
+            text="Layer 1 User Table: Factual vs Counterfactual Base Affinity",
+            x=0.5,
+        ),
+        height=40 + min(len(csv_rows), max_users) * 28 + 60,
+        margin=dict(l=10, r=10, t=60, b=10),
+    )
+
+    filepath = viz_dir / "counterfactual_table.html"
+    fig.write_html(str(filepath))
+
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        explanation = explainer.explain(
+            "counterfactual_table",
+            {
+                "csv_rows": csv_rows,
+                "day_labels": day_labels,
+                "factual_keys": factual_keys,
+                "counterfactual_keys": counterfactual_keys,
+                "n_users": len(csv_rows),
+                "n_days": len(day_labels),
+                "intervention_type": csv_rows[0].get("intervention_type", "unknown"),
+            },
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Counterfactual Table"
+        )
+        Path(filepath).write_text(html, encoding="utf-8")
+
     return str(filepath)
 
 
@@ -471,6 +894,7 @@ def render_timeseries_tab(output_dir: str):
     st.header("📈 Time-Series Visualizations")
 
     csv_path = Path(output_dir) / "causal_ground_truth.csv"
+    cf_csv_path = Path(output_dir) / "causal_table_with_counterfactual.csv"
     gt_path = Path(output_dir) / "ground_truth.json"
 
     col1, col2 = st.columns(2)
@@ -510,6 +934,29 @@ def render_timeseries_tab(output_dir: str):
             st.components.v1.html(f.read(), height=450, scrolling=True)
     else:
         st.info("No treatment distribution data.")
+
+    # ── New: Counterfactual comparison sections ──
+    st.subheader("Per-User Factual vs Counterfactual Comparison")
+    user_cf_path = (
+        Path(output_dir) / "viz/timeseries/user_counterfactual_comparison.html"
+    )
+    if user_cf_path.exists():
+        with open(user_cf_path) as f:
+            st.components.v1.html(f.read(), height=600, scrolling=True)
+    elif cf_csv_path.exists():
+        st.info("User counterfactual comparison not yet generated.")
+    else:
+        st.info("No counterfactual comparison data available.")
+
+    st.subheader("Layer 1 User Table: Factual + Counterfactual")
+    table_path = Path(output_dir) / "viz/timeseries/counterfactual_table.html"
+    if table_path.exists():
+        with open(table_path) as f:
+            st.components.v1.html(f.read(), height=500, scrolling=True)
+    elif cf_csv_path.exists():
+        st.info("Counterfactual table not yet generated.")
+    else:
+        st.info("No counterfactual table data available.")
 
 
 # ── Internal helpers ────────────────────────────────────────────────────────

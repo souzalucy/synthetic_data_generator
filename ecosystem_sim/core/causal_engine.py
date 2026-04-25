@@ -10,7 +10,7 @@ when PyTorch is available and the number of users exceeds a threshold.
 import csv
 import json
 from dataclasses import dataclass
-from typing import List, Dict, Optional, Tuple, Callable
+from typing import List, Dict, Optional, Tuple, Callable, Union
 import numpy as np
 from .user_agent import User
 from .scm_generator import SCMConfounderGenerator, SCMConfig
@@ -515,6 +515,159 @@ class CausalEngine:
         )
 
     # ------------------------------------------------------------------
+    # Time-localized counterfactual (intervention = marketing action)
+    # ------------------------------------------------------------------
+
+    def _validate_intervention_day(self, intervention_day: int) -> None:
+        """Validate that intervention_day is within the simulation range.
+
+        Args:
+            intervention_day: Day index for the intervention
+
+        Raises:
+            ValueError: If intervention_day is out of bounds
+        """
+        if intervention_day < 0:
+            raise ValueError(f"intervention_day must be >= 0, got {intervention_day}")
+        if intervention_day >= self.config.n_days:
+            raise ValueError(
+                f"intervention_day ({intervention_day}) must be < "
+                f"n_days ({self.config.n_days})"
+            )
+
+    def _compute_single_day(
+        self,
+        prev_interest: np.ndarray,
+        treatment: float,
+        treatment_effect: float,
+        confounder: np.ndarray,
+    ) -> np.ndarray:
+        """Compute a single day's interest from AR(1) + treatment + reversion + noise.
+
+        Args:
+            prev_interest: Previous day interest vector (n_categories,)
+            treatment: Treatment value for this day
+            treatment_effect: User-specific treatment effect coefficient
+            confounder: Base confounder vector (n_categories,)
+
+        Returns:
+            New interest vector (n_categories,)
+        """
+        ar_component = self.config.persistence_factor * prev_interest
+        treatment_component = treatment_effect * treatment
+        mean_reversion = self.config.mean_reversion_strength * (
+            confounder - prev_interest
+        )
+        noise = np.random.normal(0, self.config.noise_std, prev_interest.shape)
+        new_interest = ar_component + treatment_component + mean_reversion + noise
+        return np.clip(new_interest, 0, 1)
+
+    def generate_time_localized_counterfactual(
+        self,
+        factual_interest_matrix: np.ndarray,
+        intervention_day: int,
+        treatment_override: Union[float, np.ndarray] = 0.0,
+    ) -> np.ndarray:
+        """Generate a counterfactual branching from the factual trajectory.
+
+        The intervention occurs *at* intervention_day — it represents the
+        marketing action itself happening at that point in time. Everything
+        before intervention_day is kept identical to the factual trajectory.
+        From intervention_day onward, the treatment is overridden and the
+        trajectory is recomputed forward.
+
+        Args:
+            factual_interest_matrix: Factual trajectory of shape
+                (n_users, n_days, n_categories) from generate_causal_trajectories()
+            intervention_day: Day index at which the intervention (marketing
+                action) occurs. Must satisfy 0 <= intervention_day < n_days.
+            treatment_override: The alternative treatment value to apply from
+                intervention_day onward. Can be a scalar (same value for all
+                users) or an array of shape (n_users,) for per-user overrides.
+                Default: 0.0 (i.e. do(T=0)).
+
+        Returns:
+            Counterfactual interest matrix of shape
+            (n_users, n_days, n_categories), identical to factual up to
+            intervention_day - 1, then recomputed from intervention_day forward.
+        """
+        self._validate_intervention_day(intervention_day)
+
+        # Branch: copy factual trajectory up to intervention_day - 1
+        counterfactual = factual_interest_matrix.copy()
+
+        # Override treatment at intervention_day and beyond
+        modified_treatment = self.treatment_matrix.copy()
+        if isinstance(treatment_override, np.ndarray):
+            modified_treatment[:, intervention_day:] = treatment_override[:, np.newaxis]
+        else:
+            modified_treatment[:, intervention_day:] = treatment_override
+
+        # Recompute from intervention_day forward
+        for day in range(intervention_day, self.config.n_days):
+            if day == 0:
+                continue
+            for user_idx in range(self.n_users):
+                prev_interest = counterfactual[user_idx, day - 1, :]
+                treatment = modified_treatment[user_idx, day]
+                treatment_effect = self.treatment_effects[user_idx]
+                confounder = self.confounders[user_idx, :]
+                counterfactual[user_idx, day, :] = self._compute_single_day(
+                    prev_interest, treatment, treatment_effect, confounder
+                )
+
+        return counterfactual
+
+    def generate_time_localized_no_treatment_counterfactual(
+        self,
+        factual_interest_matrix: np.ndarray,
+        intervention_day: int,
+    ) -> np.ndarray:
+        """Generate counterfactual with no treatment from intervention_day onward.
+
+        The intervention (do(T=0)) occurs at intervention_day, representing
+        the marketing action being turned off from that point forward.
+
+        Args:
+            factual_interest_matrix: Factual trajectory matrix
+            intervention_day: Day at which treatment is set to zero
+
+        Returns:
+            Counterfactual interest matrix
+        """
+        return self.generate_time_localized_counterfactual(
+            factual_interest_matrix,
+            intervention_day=intervention_day,
+            treatment_override=0.0,
+        )
+
+    def generate_time_localized_double_treatment_counterfactual(
+        self,
+        factual_interest_matrix: np.ndarray,
+        intervention_day: int,
+    ) -> np.ndarray:
+        """Generate counterfactual with doubled treatment from intervention_day onward.
+
+        The intervention (do(T=2T)) occurs at intervention_day, representing
+        a campaign intensity increase from that point forward.
+
+        Args:
+            factual_interest_matrix: Factual trajectory matrix
+            intervention_day: Day at which treatment is doubled
+
+        Returns:
+            Counterfactual interest matrix
+        """
+        # Compute the override value per user as 2x their factual treatment
+        # at intervention_day, clipped to [0, 1]
+        override = np.clip(self.treatment_matrix[:, intervention_day] * 2.0, 0, 1)
+        return self.generate_time_localized_counterfactual(
+            factual_interest_matrix,
+            intervention_day=intervention_day,
+            treatment_override=override,
+        )
+
+    # ------------------------------------------------------------------
     # Utility methods
     # ------------------------------------------------------------------
 
@@ -570,6 +723,66 @@ class CausalEngine:
     # ------------------------------------------------------------------
     # Export methods
     # ------------------------------------------------------------------
+
+    def export_causal_table_with_counterfactual(
+        self,
+        filepath: str,
+        interest_matrix: np.ndarray,
+        counterfactual_matrix: np.ndarray,
+        intervention_type: str = "no_treatment",
+        intervention_value: str = "do(T=0)",
+    ):
+        """Export a wide-format CSV with both factual and counterfactual base affinities.
+
+        Columns: user_id, persona, treatment_effect, intervention_type, intervention_value,
+                 day_0_base_affinity_factual, ..., day_N_base_affinity_factual,
+                 day_0_base_affinity_counterfactual, ..., day_N_base_affinity_counterfactual
+
+        Args:
+            filepath: Output CSV file path
+            interest_matrix: Factual interest trajectory matrix (n_users, n_days, n_categories)
+            counterfactual_matrix: Counterfactual interest trajectory matrix (n_users, n_days, n_categories)
+            intervention_type: Label for the counterfactual intervention (e.g. 'no_treatment')
+            intervention_value: Description of the intervention (e.g. 'do(T=0)')
+        """
+        n_days = self.config.n_days
+
+        factual_affinity = interest_matrix.mean(axis=2)  # (n_users, n_days)
+        counterfactual_affinity = counterfactual_matrix.mean(
+            axis=2
+        )  # (n_users, n_days)
+
+        fieldnames = (
+            [
+                "user_id",
+                "persona",
+                "treatment_effect",
+                "intervention_type",
+                "intervention_value",
+            ]
+            + [f"day_{d}_base_affinity_factual" for d in range(n_days)]
+            + [f"day_{d}_base_affinity_counterfactual" for d in range(n_days)]
+        )
+
+        with open(filepath, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for i, user in enumerate(self.users):
+                row = {
+                    "user_id": user.user_id,
+                    "persona": user.persona.name,
+                    "treatment_effect": float(self.treatment_effects[i]),
+                    "intervention_type": intervention_type,
+                    "intervention_value": intervention_value,
+                }
+                for d in range(n_days):
+                    row[f"day_{d}_base_affinity_factual"] = float(
+                        factual_affinity[i, d]
+                    )
+                    row[f"day_{d}_base_affinity_counterfactual"] = float(
+                        counterfactual_affinity[i, d]
+                    )
+                writer.writerow(row)
 
     def export_ground_truth(self, filepath: str, interest_matrix: np.ndarray):
         """Export ground truth for validation.
