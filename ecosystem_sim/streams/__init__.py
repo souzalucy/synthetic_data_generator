@@ -7,6 +7,8 @@ from .geo_stream import GeoStream
 from .media_stream import MediaStream
 from .email_stream import EmailStream
 from .social_stream import SocialStream
+from .network_stream import NetworkStream
+from .urban_stream import UrbanStream
 
 __all__ = [
     "BaseStream",
@@ -16,4 +18,6 @@ __all__ = [
     "MediaStream",
     "EmailStream",
     "SocialStream",
+    "NetworkStream",
+    "UrbanStream",
 ]

@@ -23,6 +23,20 @@ streams:
   social:
     enabled: true
     event_rate: 0.2
+  
+  network:
+    enabled: true
+    event_rate: 0.15
+    developer_population_ratio: 0.15
+    github_star_rate: 0.08
+    reddit_post_rate: 0.12
+  
+  urban:
+    enabled: true
+    event_rate: 0.25
+    sector_transition_interval: 3600  # seconds
+    building_interaction_rate: 0.3
+    poi_checkin_rate: 0.1
 
 causal:
   interest_categories: 10
@@ -30,6 +44,60 @@ causal:
   persistence_factor: 0.7
   mean_reversion_strength: 0.1
   noise_std: 0.05
+
+# Aleatory Causal Machine (Layer 1)
+# Controls the random causal structure governing user trajectories.
+# The structure is sampled per simulation or per user, creating
+# realistic variability in the data-generating process.
+# Available structures: none, direct, chain, confounder
+aleatory_causal:
+  enabled: true
+  available_structures: [none, direct, chain, confounder]
+  structure_probs: [0.1, 0.3, 0.3, 0.3]
+  randomize_per: simulation
+  direct_effect_range: [0.1, 0.5]
+  chain_confounder_effect_range: [0.2, 0.6]
+  chain_treatment_effect_range: [0.1, 0.4]
+  confounder_effect_on_treatment: [0.3, 0.7]
+  confounder_effect_on_outcome: [0.2, 0.5]
+  noise_std_range: [0.02, 0.10]
+  counterfactual:
+    enabled: true
+    default_intervention_type: pointwise
+    default_strength: 0.5
+    default_start_day: 14
+
+# Structural Causal Model (SCM) configuration
+# Replaces independent-per-category confounder generation with
+# a multivariate normal SCM using a covariance matrix built from
+# real dataset priors (Amazon co-purchasing, Wikispeedia, SNAP, etc.)
+scm:
+  enabled: true
+  base_diagonal: 0.5        # Base diagonal of covariance matrix
+  prior_correlation_scale: 0.3  # Scale factor for prior correlations
+  off_diagonal_regularizer: 0.1 # Regularization for positive definiteness
+  counterfactual_graphs:
+    enabled: true            # Enable Phase 6 counterfactual graph analysis
+    scenarios:
+      - no_treatment         # do(T=0)
+      - double_treatment     # do(T=2T)
+      - optimal_treatment    # Targeted treatment for high-affinity users
+      - confounder_shift     # do(Z=Z+0.2)
+
+persona:
+  n_personas: 5           # Number of persona clusters to derive from priors
+  n_sectors: 7            # Number of urban sectors to use
+  developer_types:
+    inactive: 0.6
+    casual: 0.3
+    active: 0.08
+    core: 0.02
+  
+  urban_profiles:
+    downtown_resident: 0.2
+    suburban_commuter: 0.35
+    rural_mobile: 0.15
+    mixed_urban: 0.3
 
 time_patterns:
   search_peaks: [9, 13, 20]  # hour of day
@@ -40,3 +108,22 @@ output:
   export_format: "jsonl"
   batch_size: 1000
   checkpoint_interval: 30  # days
+
+priors:
+  enabled: true
+  path: "ecosystem_sim/ecosystem_sim/data/priors/compiled_priors.json"
+
+# Intelligence layer configuration
+# Controls device stitching, lift analysis, and campaign parameters
+intelligence:
+  confidence_threshold: 0.7   # Threshold for device stitching confidence
+  campaign_day: 14            # Day of campaign for lift analysis (mid-simulation)
+  campaign_id: "campaign_001" # Campaign identifier
+
+# Visualization module configuration
+# Generates interactive HTML charts (Plotly) and optional Streamlit dashboard
+visualization:
+  enabled: true
+  output_dir: "ecosystem_sim/outputs/viz"  # subdirectory for HTML files
+  max_users_graph: 10                       # max user interaction graphs to render
+  max_trajectory_users: 50                  # max users in causal trajectory plots

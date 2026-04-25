@@ -2,6 +2,11 @@
 .outputs/
 IMPLEMENTATION_COMPLETE.md
 
+# uv wheel version marker files (empty artifacts from dependency resolution)
+0.*
+1.*
+2.*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -70,10 +75,8 @@ logs/
 *.pid
 *.csv
 
-# Data, outputs, secrets
-data/*.sqlite
-data/*.db
-data/secrets.yml
+# Data directories (all levels)
+data/
 outputs/
 results/
 *.env
