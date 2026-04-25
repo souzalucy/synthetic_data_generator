@@ -19,6 +19,7 @@ from .utils import (
     ensure_output_dir,
     extract_decile_data,
 )
+from ecosystem_sim.intelligence.explanation_agent import VisualizationExplainer
 
 
 # ── Lift Analysis Visualizations ────────────────────────────────────────────
@@ -27,6 +28,7 @@ from .utils import (
 def plot_lift_deciles(
     lift_report: Dict,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Bar chart of average uplift by decile with error bars.
 
@@ -98,12 +100,18 @@ def plot_lift_deciles(
 
     filepath = viz_dir / "lift_deciles.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        explanation = explainer.explain("lift_deciles", {"n_deciles": len(deciles)})
+        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Lift Deciles")
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 
 def plot_qini_curve(
     lift_report: Dict,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Qini curve showing model performance vs. random targeting.
 
@@ -217,12 +225,18 @@ def plot_qini_curve(
 
     filepath = viz_dir / "qini_curve.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        explanation = explainer.explain("qini_curve", {"has_qini_coefficient": "qini_coefficient" in lift_report})
+        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Qini Curve")
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 
 def plot_lift_summary(
     lift_report: Dict,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Create a lift summary dashboard with key metrics and benchmark comparison.
 
@@ -356,6 +370,11 @@ def plot_lift_summary(
 
     filepath = viz_dir / "lift_summary.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        explanation = explainer.explain("lift_summary", {"auuc": lift_report.get("auuc"), "qini_coefficient": lift_report.get("qini_coefficient")})
+        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Lift Summary")
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 
@@ -365,6 +384,7 @@ def plot_lift_summary(
 def plot_propensity_distributions(
     ground_truth_path: str,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Visualize propensity-related distributions from ground truth data.
 
@@ -475,6 +495,11 @@ def plot_propensity_distributions(
 
     filepath = viz_dir / "propensity_distributions.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        explanation = explainer.explain("propensity_distributions", {"n_users": len(users)})
+        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Propensity Distributions")
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 
@@ -484,6 +509,7 @@ def plot_propensity_distributions(
 def plot_cluster_size_distribution(
     stitched_data: Dict,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Visualize device cluster size distribution.
 
@@ -560,6 +586,12 @@ def plot_cluster_size_distribution(
 
     filepath = viz_dir / "cluster_size_distribution.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        clusters = stitched_data.get("clusters", stitched_data.get("devices", []))
+        explanation = explainer.explain("cluster_size_distribution", {"n_clusters": len(clusters)})
+        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Cluster Size Distribution")
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 
@@ -569,6 +601,7 @@ def plot_cluster_size_distribution(
 def plot_price_sensitivity(
     ground_truth_path: str,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Visualize price sensitivity metrics from ground truth data.
 
@@ -681,6 +714,11 @@ def plot_price_sensitivity(
 
     filepath = viz_dir / "price_sensitivity.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        explanation = explainer.explain("price_sensitivity", {"n_users": len(users)})
+        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Price Sensitivity")
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 

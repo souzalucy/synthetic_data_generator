@@ -23,6 +23,7 @@ from .utils import (
     extract_causal_pathways,
     extract_most_affected_users,
 )
+from ecosystem_sim.intelligence.explanation_agent import VisualizationExplainer
 
 
 # ── Counterfactual Delta Visualizations ─────────────────────────────────────
@@ -31,6 +32,7 @@ from .utils import (
 def plot_counterfactual_deltas(
     cf_report: Dict,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Comprehensive counterfactual delta dashboard.
 
@@ -229,6 +231,12 @@ def plot_counterfactual_deltas(
 
     filepath = viz_dir / "counterfactual_dashboard.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        deltas = extract_deltas(cf_report)
+        explanation = explainer.explain("counterfactual_deltas", {"scenarios": list(deltas.keys()) if deltas else []})
+        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Counterfactual Deltas")
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 
@@ -238,6 +246,7 @@ def plot_counterfactual_deltas(
 def plot_ground_truth_summary(
     ground_truth_path: str,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Create a comprehensive ground truth summary dashboard.
 
@@ -401,6 +410,11 @@ def plot_ground_truth_summary(
 
     filepath = viz_dir / "ground_truth_summary.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        explanation = explainer.explain("ground_truth_summary", {"n_users": len(gt.get("users", [])), "n_days": gt.get("config", {}).get("n_days", 0)})
+        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Ground Truth Summary")
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 
@@ -410,6 +424,7 @@ def plot_ground_truth_summary(
 def plot_causal_pathways(
     cf_report: Dict,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Visualize discovered causal pathways with effect sizes and interpretations.
 
@@ -502,6 +517,12 @@ def plot_causal_pathways(
 
     filepath = viz_dir / "causal_pathways.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        pathways = extract_causal_pathways(cf_report)
+        explanation = explainer.explain("causal_pathways", {"n_pathways": len(pathways)})
+        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Causal Pathways")
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 

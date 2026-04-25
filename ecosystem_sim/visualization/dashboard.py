@@ -16,6 +16,7 @@ from ecosystem_sim.visualization.utils import (
     load_json,
     load_csv_to_dicts,
 )
+from ecosystem_sim.intelligence.explanation_agent import VisualizationExplainer
 from ecosystem_sim.visualization.graph_viz import (
     plot_interaction_graphs,
     plot_counterfactual_comparison,
@@ -59,6 +60,7 @@ def generate_all_visualizations(
     stitched_data_path: Optional[str] = None,
     lift_report_path: Optional[str] = None,
     counterfactual_report_path: Optional[str] = None,
+    config: Optional[Dict] = None,
 ) -> Dict[str, str]:
     """Generate every visualization as a standalone HTML file.
 
@@ -92,25 +94,42 @@ def generate_all_visualizations(
 
     generated: Dict[str, str] = {}
 
+    # Create explainer if config is provided with explanation_agent enabled
+    # The DeepSeek API key is read from the DEEPSEEK_API_KEY env var
+    # (or from a .env file in the project root via python-dotenv).
+    explainer = None
+    if config:
+        ea_config = config.get("intelligence", {}).get("explanation_agent", {})
+        if ea_config.get("enabled", True):
+            explainer = VisualizationExplainer(
+                model=ea_config.get("model", "deepseek-chat"),
+                temperature=ea_config.get("temperature", 0.3),
+                max_explanations=ea_config.get("max_explanations", 50),
+            )
+
     # 1. Graph visualizations -----------------------------------------------
     print("\n[VIZ] Generating graph visualizations...")
 
     ig_data = load_json(ig_path)
     if ig_data:
-        files = plot_interaction_graphs(ig_data, str(out / "viz"))
+        files = plot_interaction_graphs(ig_data, str(out / "viz"), explainer=explainer)
         if files:
             generated["interaction_graphs"] = files[0]  # summary page
         print(f"  * Interaction graphs: {len(files)} pages generated")
 
     st_data = load_json(st_path)
     if st_data:
-        filepath = plot_device_stitching_graph(st_data, str(out / "viz"))
+        filepath = plot_device_stitching_graph(
+            st_data, str(out / "viz"), explainer=explainer
+        )
         generated["device_stitching"] = filepath
         print(f"  * Device stitching graph: {filepath}")
 
     cf_data = load_json(cf_path)
     if cf_data:
-        files = plot_counterfactual_comparison(cf_data, str(out / "viz"))
+        files = plot_counterfactual_comparison(
+            cf_data, str(out / "viz"), explainer=explainer
+        )
         if files:
             generated["counterfactual_comparison"] = files[0]
         print(f"  * Counterfactual comparison: {len(files)} pages generated")
@@ -119,11 +138,15 @@ def generate_all_visualizations(
     print("\n[VIZ] Generating time-series visualizations...")
 
     if Path(csv_path).exists():
-        result = plot_causal_trajectories(csv_path, str(out / "viz"))
+        result = plot_causal_trajectories(
+            csv_path, str(out / "viz"), explainer=explainer
+        )
         generated["causal_trajectories"] = result
         print(f"  * Causal trajectories: {result}")
 
-        result = plot_persona_trajectories(csv_path, str(out / "viz"))
+        result = plot_persona_trajectories(
+            csv_path, str(out / "viz"), explainer=explainer
+        )
         generated["persona_trajectories"] = result
         print(f"  * Persona trajectories: {result}")
 
@@ -133,11 +156,13 @@ def generate_all_visualizations(
             "interest_matrix", gt_data.get("interest_trajectories")
         )
         if interest_matrix:
-            result = plot_interest_heatmap(interest_matrix, gt_path, str(out / "viz"))
+            result = plot_interest_heatmap(
+                interest_matrix, gt_path, str(out / "viz"), explainer=explainer
+            )
             generated["interest_heatmap"] = result
             print(f"  * Interest heatmap: {result}")
 
-        result = plot_treatment_matrix(gt_path, str(out / "viz"))
+        result = plot_treatment_matrix(gt_path, str(out / "viz"), explainer=explainer)
         generated["treatment_matrix"] = result
         print(f"  * Treatment matrix: {result}")
 
@@ -146,29 +171,33 @@ def generate_all_visualizations(
 
     lr_data = load_json(lr_path)
     if lr_data:
-        result = plot_lift_deciles(lr_data, str(out / "viz"))
+        result = plot_lift_deciles(lr_data, str(out / "viz"), explainer=explainer)
         generated["lift_deciles"] = result
         print(f"  * Lift deciles: {result}")
 
-        result = plot_qini_curve(lr_data, str(out / "viz"))
+        result = plot_qini_curve(lr_data, str(out / "viz"), explainer=explainer)
         generated["qini_curve"] = result
         print(f"  * Qini curve: {result}")
 
-        result = plot_lift_summary(lr_data, str(out / "viz"))
+        result = plot_lift_summary(lr_data, str(out / "viz"), explainer=explainer)
         generated["lift_summary"] = result
         print(f"  * Lift summary: {result}")
 
     if gt_data:
-        result = plot_propensity_distributions(gt_path, str(out / "viz"))
+        result = plot_propensity_distributions(
+            gt_path, str(out / "viz"), explainer=explainer
+        )
         generated["propensity_distributions"] = result
         print(f"  * Propensity distributions: {result}")
 
-        result = plot_price_sensitivity(gt_path, str(out / "viz"))
+        result = plot_price_sensitivity(gt_path, str(out / "viz"), explainer=explainer)
         generated["price_sensitivity"] = result
         print(f"  * Price sensitivity: {result}")
 
     if st_data:
-        result = plot_cluster_size_distribution(st_data, str(out / "viz"))
+        result = plot_cluster_size_distribution(
+            st_data, str(out / "viz"), explainer=explainer
+        )
         generated["cluster_sizes"] = result
         print(f"  * Cluster size distribution: {result}")
 
@@ -176,16 +205,20 @@ def generate_all_visualizations(
     print("\n[VIZ] Generating report visualizations...")
 
     if cf_data:
-        result = plot_counterfactual_deltas(cf_data, str(out / "viz"))
+        result = plot_counterfactual_deltas(
+            cf_data, str(out / "viz"), explainer=explainer
+        )
         generated["counterfactual_deltas"] = result
         print(f"  * Counterfactual deltas: {result}")
 
-        result = plot_causal_pathways(cf_data, str(out / "viz"))
+        result = plot_causal_pathways(cf_data, str(out / "viz"), explainer=explainer)
         generated["causal_pathways"] = result
         print(f"  * Causal pathways: {result}")
 
     if gt_data:
-        result = plot_ground_truth_summary(gt_path, str(out / "viz"))
+        result = plot_ground_truth_summary(
+            gt_path, str(out / "viz"), explainer=explainer
+        )
         generated["ground_truth_summary"] = result
         print(f"  * Ground truth summary: {result}")
 

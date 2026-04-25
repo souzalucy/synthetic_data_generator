@@ -120,6 +120,20 @@ intelligence:
   campaign_day: 14            # Day of campaign for lift analysis (mid-simulation)
   campaign_id: "campaign_001" # Campaign identifier
 
+  # Explanation agent configuration
+  # Generates brief explanations for visualizations using either
+  # template-based fallback or LangChain + DeepSeek (when API key is set).
+  #
+  # The DeepSeek API key is read from the DEEPSEEK_API_KEY environment variable.
+  # Create a `.env` file in the project root with:
+  #   DEEPSEEK_API_KEY=sk-your-key-here
+  explanation_agent:
+    enabled: true
+    mode: "template"           # "template" (no deps) or "llm" (requires langchain + deepseek)
+    model: "deepseek-chat"     # DeepSeek model name
+    temperature: 0.3           # LLM temperature (0.0 = deterministic, 1.0 = creative)
+    max_explanations: 50       # Max explanations per run (avoids excessive API calls)
+
 # Visualization module configuration
 # Generates interactive HTML charts (Plotly) and optional Streamlit dashboard
 visualization:

@@ -23,6 +23,7 @@ from .utils import (
     extract_deltas,
     extract_most_affected_users,
 )
+from ecosystem_sim.intelligence.explanation_agent import VisualizationExplainer
 
 
 # ── Interaction Graph Visualizations ────────────────────────────────────────
@@ -153,6 +154,7 @@ def plot_interaction_graphs(
     graph_data: Dict,
     output_dir: str,
     max_users: int = 10,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> List[str]:
     """Render per-user interaction graphs as Plotly network diagrams.
 
@@ -206,6 +208,11 @@ def plot_interaction_graphs(
 
         filepath = viz_dir / f"user_{uid}_graph.html"
         fig.write_html(str(filepath))
+        if explainer:
+            html = Path(filepath).read_text(encoding="utf-8")
+            explanation = explainer.explain("interaction_graphs", {"user_id": uid, "n_edges": len(edges)})
+            html = VisualizationExplainer.inject_explanation_button(html, explanation, f"User {uid} Interaction Graph")
+            Path(filepath).write_text(html, encoding="utf-8")
         generated_files.append(str(filepath))
 
     return generated_files
@@ -294,6 +301,7 @@ def _create_graph_summary_page(metrics: Dict, users_data: Dict, output_path: Pat
 def plot_counterfactual_comparison(
     cf_report: Dict,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> List[str]:
     """Render multi-scenario counterfactual comparison visualizations.
 
@@ -334,6 +342,14 @@ def plot_counterfactual_comparison(
         affected_path = viz_dir / "most_affected_users.html"
         _plot_affected_users(affected, affected_path)
         generated_files.append(str(affected_path))
+
+    if explainer and generated_files:
+        # Inject explanation into the first generated file (delta comparison)
+        first = generated_files[0]
+        html = Path(first).read_text(encoding="utf-8")
+        explanation = explainer.explain("counterfactual_deltas", {"scenarios": list(cf_report.get("scenarios", cf_report.get("worlds", {}).keys()))})
+        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Counterfactual Comparison")
+        Path(first).write_text(html, encoding="utf-8")
 
     return generated_files
 
@@ -487,6 +503,7 @@ def _plot_affected_users(
 def plot_device_stitching_graph(
     stitched_data: Dict,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Visualize device stitching clusters as a bipartite-like graph.
 
@@ -552,6 +569,12 @@ def plot_device_stitching_graph(
 
     filepath = viz_dir / "device_stitching.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        clusters = stitched_data.get("clusters", stitched_data.get("devices", []))
+        explanation = explainer.explain("device_stitching", {"n_clusters": len(clusters)})
+        html = VisualizationExplainer.inject_explanation_button(html, explanation, "Device Stitching")
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 

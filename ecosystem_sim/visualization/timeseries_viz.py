@@ -20,6 +20,7 @@ from .utils import (
     get_persona_color,
     ensure_output_dir,
 )
+from ecosystem_sim.intelligence.explanation_agent import VisualizationExplainer
 
 
 # ── Causal Trajectory Plots ─────────────────────────────────────────────────
@@ -29,6 +30,7 @@ def plot_causal_trajectories(
     csv_path: str,
     output_dir: str,
     max_users: int = 50,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Plot per-day base affinity trajectories from the causal CSV.
 
@@ -155,12 +157,27 @@ def plot_causal_trajectories(
 
     filepath = viz_dir / "causal_trajectories.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        explanation = explainer.explain(
+            "causal_trajectories",
+            {
+                "n_users": len(unique_users),
+                "n_personas": len(df["persona"].unique()),
+                "n_days": df["day"].max(),
+            },
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Causal Interest Trajectories"
+        )
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 
 def plot_persona_trajectories(
     csv_path: str,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Create faceted line plots, one subplot per persona.
 
@@ -248,6 +265,16 @@ def plot_persona_trajectories(
 
     filepath = viz_dir / "persona_trajectories.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        explanation = explainer.explain(
+            "persona_trajectories",
+            {"n_personas": len(personas), "n_days": df["day"].max()},
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Persona Trajectories"
+        )
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 
@@ -258,6 +285,7 @@ def plot_interest_heatmap(
     interest_matrix: Optional[np.ndarray] = None,
     ground_truth_path: Optional[str] = None,
     output_dir: str = ".",
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Plot a heatmap of average interest across days and categories.
 
@@ -312,6 +340,21 @@ def plot_interest_heatmap(
 
     filepath = viz_dir / "interest_heatmap.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        n_days, n_cats = avg_interest.shape
+        explanation = explainer.explain(
+            "interest_heatmap",
+            {
+                "n_days": n_days,
+                "n_categories": n_cats,
+                "mean_interest": float(avg_interest.mean()),
+            },
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Interest Heatmap"
+        )
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 
@@ -321,6 +364,7 @@ def plot_interest_heatmap(
 def plot_treatment_matrix(
     ground_truth_path: str,
     output_dir: str,
+    explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
     """Visualize the treatment assignment matrix as a heatmap.
 
@@ -395,6 +439,21 @@ def plot_treatment_matrix(
 
     filepath = viz_dir / "treatment_matrix.html"
     fig.write_html(str(filepath))
+    if explainer:
+        html = Path(filepath).read_text(encoding="utf-8")
+        explanation = explainer.explain(
+            "treatment_matrix",
+            {
+                "n_users": len(users),
+                "n_days": n_days,
+                "mean_treatment_effect": float(np.mean(treatment_effects)),
+                "mean_base_affinity": float(np.mean(base_affinities)),
+            },
+        )
+        html = VisualizationExplainer.inject_explanation_button(
+            html, explanation, "Treatment Matrix"
+        )
+        Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)
 
 

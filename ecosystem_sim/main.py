@@ -347,7 +347,22 @@ def run_simulation(config: Dict, output_dir: str):
             "lift_percent": float(lift_report["lift_percent"]),
             "p_value": float(lift_report["p_value"]),
             "auuc": float(lift_report["auuc"]),
+            "qini_coefficient": float(lift_report.get("qini_coefficient", 0)),
             "n_exposed_users": len(lift_report["exposed_users"]),
+            "exposed_users": [
+                {k: float(v) if isinstance(v, (int, float)) else v
+                 for k, v in u.items()}
+                for u in lift_report["exposed_users"]
+            ],
+            "uplift_by_decile": [
+                {k: float(v) if isinstance(v, (int, float)) else v
+                 for k, v in d.items()}
+                for d in lift_report.get("uplift_by_decile", [])
+            ],
+            "criteo_benchmark_comparison": {
+                k: float(v) if isinstance(v, (int, float)) else v
+                for k, v in lift_report.get("criteo_benchmark_comparison", {}).items()
+            },
         }
         json.dump(report_copy, f, indent=2)
 
@@ -424,6 +439,7 @@ def run_simulation(config: Dict, output_dir: str):
             .get("counterfactual_graphs", {})
             .get("enabled", False)
             else None,
+            config=config,
         )
         print(f"  * Generated {len(viz_files)} visualization files")
         if "index" in viz_files:
