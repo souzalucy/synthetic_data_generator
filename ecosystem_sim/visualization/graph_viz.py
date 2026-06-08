@@ -4,6 +4,7 @@ and device stitching clusters.
 Uses Plotly for interactive HTML output and NetworkX for graph layout algorithms.
 """
 
+import json
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
@@ -526,55 +527,66 @@ def plot_device_stitching_graph(
     stitched_data: Dict,
     output_dir: str,
     explainer: Optional["VisualizationExplainer"] = None,
+    accuracy_data_path: Optional[str] = None,
 ) -> str:
-    """Visualize device stitching clusters as a bipartite-like graph.
+    """Visualize ground-truth user→device mapping as a bipartite graph.
+
+    Reads the ground-truth device mapping (``user_to_devices``) from
+    *stitched_data* and renders a single deterministic graph showing
+    which devices belong to each user.
 
     Args:
-        stitched_data: Loaded stitched_data.json dict
+        stitched_data: Loaded ground_truth_device_mapping.json dict
         output_dir: Output directory for HTML file
+        explainer: Optional VisualizationExplainer for explanation injection
+        accuracy_data_path: Ignored (kept for backward compatibility).
 
     Returns:
         Path to generated HTML file
     """
     viz_dir = ensure_output_dir(output_dir, "stitching")
-    clusters = stitched_data.get("clusters", {})
-    metrics = stitched_data.get("metrics", {})
 
-    if not clusters:
+    # Extract ground-truth clusters from the mapping
+    user_to_devices = stitched_data.get("user_to_devices", {})
+    n_users = stitched_data.get("n_users", 0)
+    n_devices = stitched_data.get("n_devices", 0)
+
+    if not user_to_devices:
         fig = go.Figure()
-        fig.update_layout(title="No Device Clusters Available")
+        fig.update_layout(title="No Ground-Truth Device Mapping Available")
         filepath = viz_dir / "device_stitching.html"
         fig.write_html(str(filepath))
         return str(filepath)
 
-    # Build a graph: cluster nodes (large) connected to device nodes (small)
+    # ── Build ground-truth graph ───────────────────────────────────────────
     G = nx.Graph()
-    cluster_colors = {}
+    colors = {}
 
-    for cluster_id, devices in clusters.items():
-        G.add_node(cluster_id, type="cluster", size=20)
-        cluster_colors[cluster_id] = "#636EFA"
+    for user_id, devices in user_to_devices.items():
+        node_id = f"user_{user_id}"
+        G.add_node(node_id, type="user", size=20)
+        colors[node_id] = "#00CC96"
         for device in devices:
             G.add_node(device, type="device", size=8)
-            cluster_colors[device] = "#EF553B"
-            G.add_edge(cluster_id, device, weight=1.0)
+            colors[device] = "#AB63FA"
+            G.add_edge(node_id, device, weight=1.0)
 
     fig = _create_network_figure(
         G,
-        title=f"Device Stitching Clusters "
-        f"({metrics.get('n_clusters', 0)} clusters, "
-        f"{metrics.get('n_devices', 0)} devices)",
-        node_colors=cluster_colors,
+        title=f"Ground-Truth User→Device Mapping ({n_users} users, {n_devices} devices)",
+        node_colors=colors,
         show_labels=False,
         layout_seed=42,
     )
 
-    # Add cluster size annotation
-    cluster_sizes = [len(devices) for devices in clusters.values()]
+    # Add summary annotation
+    cluster_sizes = [len(devices) for devices in user_to_devices.values()]
     size_text = (
-        f"Avg cluster size: {np.mean(cluster_sizes):.1f}<br>"
-        f"Max cluster size: {max(cluster_sizes)}<br>"
-        f"Min cluster size: {min(cluster_sizes)}"
+        f"Users: {n_users}<br>"
+        f"Devices: {n_devices}<br>"
+        f"Avg devices/user: {np.mean(cluster_sizes):.1f}<br>"
+        f"Max devices/user: {max(cluster_sizes)}<br>"
+        f"Min devices/user: {min(cluster_sizes)}"
     )
     fig.add_annotation(
         x=0.02,
@@ -589,6 +601,7 @@ def plot_device_stitching_graph(
         borderwidth=1,
     )
 
+    # ── Write output ───────────────────────────────────────────────────────
     filepath = viz_dir / "device_stitching.html"
     fig.write_html(str(filepath))
     if explainer:
@@ -596,14 +609,14 @@ def plot_device_stitching_graph(
         explanation = explainer.explain(
             "device_stitching",
             {
-                "clusters": clusters,
-                "metrics": metrics,
-                "stitched_data": stitched_data,
-                "n_clusters": len(clusters),
+                "user_to_devices": user_to_devices,
+                "n_users": n_users,
+                "n_devices": n_devices,
+                "is_ground_truth": True,
             },
         )
         html = VisualizationExplainer.inject_explanation_button(
-            html, explanation, "Device Stitching"
+            html, explanation, "Ground-Truth Device Mapping"
         )
         Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)

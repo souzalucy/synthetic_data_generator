@@ -241,18 +241,24 @@ class CounterfactualGraphStitcher(GraphStitcher):
         if "factual" not in self.scenario_graphs:
             return []
 
-        factual_graphs = self.scenario_graphs["factual"]["graph"]["graphs"]
+        factual_meta = self.scenario_graphs["factual"]["graph"].get(
+            "user_meta",
+            self.scenario_graphs["factual"]["graph"].get("graphs", {}),
+        )
         affected = []
 
         for scenario_name, data in self.scenario_graphs.items():
             if scenario_name == "factual":
                 continue
 
-            cf_graphs = data["graph"]["graphs"]
+            cf_meta = data["graph"].get(
+                "user_meta",
+                data["graph"].get("graphs", {}),
+            )
 
-            for uid in factual_graphs:
-                f_edges = factual_graphs[uid].get("n_edges", 0)
-                cf_data = cf_graphs.get(uid)
+            for uid in factual_meta:
+                f_edges = factual_meta[uid].get("n_edges", 0)
+                cf_data = cf_meta.get(uid)
                 if cf_data is None:
                     continue
                 cf_edges = cf_data.get("n_edges", 0)

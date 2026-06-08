@@ -49,7 +49,8 @@ class BaseStream(ABC):
         self.taxonomy = taxonomy
         self.name = name
         self.priors = priors
-        self.events = []
+        self.events = []  # Anonymized events (user_id may be None) — exported to JSONL
+        self.events_ground_truth = []  # Ground-truth events (always with real user_id) — never exported
         self.event_counter = 0
 
     def create_base_event(
@@ -62,6 +63,12 @@ class BaseStream(ABC):
     ) -> Dict[str, Any]:
         """Create base event structure.
 
+        Creates two versions of each event:
+        1. Anonymized (stored in self.events, exported to JSONL) — user_id may be
+           probabilistically omitted based on privacy sensitivity.
+        2. Ground-truth (stored in self.events_ground_truth, never exported) —
+           always contains the real user_id for deterministic device stitching.
+
         Args:
             user_id: User ID (may be omitted probabilistically based on privacy)
             device_id: Device ID
@@ -70,7 +77,7 @@ class BaseStream(ABC):
             user: Optional User object for privacy-based user_id omission
 
         Returns:
-            Base event dictionary
+            Anonymized base event dictionary (for JSONL export / probabilistic stitching)
         """
         self.event_counter += 1
 
@@ -90,7 +97,8 @@ class BaseStream(ABC):
             if np.random.random() < privacy_val:
                 resolved_user_id = None
 
-        return {
+        # --- Anonymized event (exported to JSONL, used by probabilistic stitcher) ---
+        anonymized_event = {
             "event_id": f"evt_{self.event_counter:010d}_{uuid.uuid4().hex[:8]}",
             "user_id": resolved_user_id,
             "device_id": device_id,
@@ -99,6 +107,21 @@ class BaseStream(ABC):
             "service": self.name,
             **device_info,
         }
+        self.events.append(anonymized_event)
+
+        # --- Ground-truth event (never exported, always has real user_id) ---
+        gt_event = {
+            "event_id": anonymized_event["event_id"],
+            "user_id": user_id,  # Always the real user_id
+            "device_id": device_id,
+            "timestamp": timestamp,
+            "event_type": event_type,
+            "service": self.name,
+            **device_info,
+        }
+        self.events_ground_truth.append(gt_event)
+
+        return anonymized_event
 
     def should_generate_event(self, probability: float) -> bool:
         """Stochastic decision for event generation.

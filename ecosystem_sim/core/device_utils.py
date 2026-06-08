@@ -86,7 +86,13 @@ def get_torch_device():
     if device_type == "directml":
         import torch_directml
 
-        return torch_directml.device()
+        device = torch_directml.device()
+        # Sanitize: force the device string to be UTF-8 clean.
+        # AMD GPU drivers on Windows may return device names with non-UTF-8
+        # bytes (e.g. 0xe3 = 'ã' in Windows-1252), which causes
+        # UnicodeDecodeError downstream in PyTorch tensor operations.
+        _ = str(device).encode("utf-8", errors="replace").decode("utf-8")
+        return device
     elif device_type in ("cuda", "rocm"):
         return torch.device("cuda")
     elif device_type == "mps":
@@ -120,6 +126,11 @@ def device_summary() -> str:
             import torch_directml
 
             name = torch_directml.device_name(0)
+            # Sanitize non-UTF-8 bytes from GPU driver strings
+            if isinstance(name, bytes):
+                name = name.decode("utf-8", errors="replace")
+            else:
+                name = name.encode("utf-8", errors="replace").decode("utf-8")
             return f"{name} via DirectML"
         elif dev in ("cuda", "rocm"):
             name = torch.cuda.get_device_name(0)

@@ -1,15 +1,24 @@
 """Configurable causal structures for the first-layer SCM.
 
-Defines the causal graph topologies that govern how confounders (Z),
-treatment (T), and outcomes (Y) relate to each other. The structure
-is sampled aleatorily per simulation or per user, creating realistic
+Defines the causal graph topologies that govern how treatment (T),
+mediator/confounder (X), and outcomes (Y) relate to each other.
+The structure is sampled aleatorily per user, creating realistic
 heterogeneity in the data-generating process.
 
-Supported structures:
-    - NONE:       Independent categories, no causal links
-    - DIRECT:     T → Y (treatment directly affects outcome)
-    - CHAIN:      Z → T → Y (confounder → treatment → outcome)
-    - CONFOUNDER: Z → T, Z → Y (common cause affects both)
+Supported structures (3 total, per user specification):
+    - DIRECT:     T → Y
+                  Tt = ΦT·Tt−1 + εT,t
+                  Yt = ΦY·Yt−1 + βTY·f(Tt) + εY,t
+
+    - CHAIN:      T → X → Y  (mediation)
+                  Tt = ΦT·Tt−1 + εT,t
+                  Xt = βTX·f(Tt) + εX,t
+                  Yt = ΦY·Yt−1 + βXY·f(Xt) + εY,t
+
+    - CONFOUNDER: X → T, X → Y  (common cause)
+                  Xt = ΦX·Xt−1 + εX,t
+                  Tt = ΦT·Tt−1 + βXT·f(Xt) + εT,t
+                  Yt = ΦY·Yt−1 + βXY·f(Xt) + βTY·g(Tt) + εY,t
 """
 
 from dataclasses import dataclass, field
@@ -21,7 +30,6 @@ import numpy as np
 class CausalStructure(Enum):
     """Enumeration of supported causal graph topologies."""
 
-    NONE = "none"
     DIRECT = "direct"
     CHAIN = "chain"
     CONFOUNDER = "confounder"
@@ -56,22 +64,30 @@ class CausalStructureConfig:
 
     available_structures: List[CausalStructure] = field(
         default_factory=lambda: [
-            CausalStructure.NONE,
             CausalStructure.DIRECT,
             CausalStructure.CHAIN,
             CausalStructure.CONFOUNDER,
         ]
     )
     structure_probs: Optional[List[float]] = None
-    randomize_per: str = "simulation"
+    randomize_per: str = "user"
 
     # Parameter ranges (aleatory)
-    direct_effect_range: Tuple[float, float] = (0.1, 0.5)
-    chain_confounder_effect_range: Tuple[float, float] = (0.2, 0.6)
-    chain_treatment_effect_range: Tuple[float, float] = (0.1, 0.4)
-    confounder_effect_on_treatment: Tuple[float, float] = (0.3, 0.7)
-    confounder_effect_on_outcome: Tuple[float, float] = (0.2, 0.5)
+    # Shared
+    persistence_factor_range: Tuple[float, float] = (0.6, 0.9)
     noise_std_range: Tuple[float, float] = (0.02, 0.10)
+
+    # Direct: T → Y
+    direct_treatment_effect_range: Tuple[float, float] = (0.1, 0.5)
+
+    # Chain (Mediation): T → X → Y
+    chain_tx_effect_range: Tuple[float, float] = (0.2, 0.6)
+    chain_xy_effect_range: Tuple[float, float] = (0.1, 0.4)
+
+    # Confounder: X → T, X → Y
+    confounder_xt_effect_range: Tuple[float, float] = (0.3, 0.7)
+    confounder_xy_effect_range: Tuple[float, float] = (0.2, 0.5)
+    confounder_ty_effect_range: Tuple[float, float] = (0.1, 0.4)
 
     def __post_init__(self) -> None:
         """Validate configuration invariants."""
@@ -96,12 +112,14 @@ class CausalStructureConfig:
             )
 
         for name, (lo, hi) in [
-            ("direct_effect_range", self.direct_effect_range),
-            ("chain_confounder_effect_range", self.chain_confounder_effect_range),
-            ("chain_treatment_effect_range", self.chain_treatment_effect_range),
-            ("confounder_effect_on_treatment", self.confounder_effect_on_treatment),
-            ("confounder_effect_on_outcome", self.confounder_effect_on_outcome),
+            ("persistence_factor_range", self.persistence_factor_range),
             ("noise_std_range", self.noise_std_range),
+            ("direct_treatment_effect_range", self.direct_treatment_effect_range),
+            ("chain_tx_effect_range", self.chain_tx_effect_range),
+            ("chain_xy_effect_range", self.chain_xy_effect_range),
+            ("confounder_xt_effect_range", self.confounder_xt_effect_range),
+            ("confounder_xy_effect_range", self.confounder_xy_effect_range),
+            ("confounder_ty_effect_range", self.confounder_ty_effect_range),
         ]:
             if lo < 0 or hi > 1.0 or lo >= hi:
                 raise ValueError(
@@ -114,22 +132,21 @@ class CausalStructureConfig:
 # ---------------------------------------------------------------------------
 
 
-@_register_sampler(CausalStructure.NONE)
-def _sample_none_params(
-    config: CausalStructureConfig, rng: np.random.Generator
-) -> Dict[str, float]:
-    """Sample parameters for NONE structure — only noise."""
-    return {"noise_std": float(rng.uniform(*config.noise_std_range))}
-
-
 @_register_sampler(CausalStructure.DIRECT)
 def _sample_direct_params(
     config: CausalStructureConfig, rng: np.random.Generator
 ) -> Dict[str, float]:
-    """Sample parameters for DIRECT structure — direct effect + noise."""
+    """Sample parameters for DIRECT structure.
+
+    Tt = ΦT·Tt−1 + εT,t
+    Yt = ΦY·Yt−1 + βTY·f(Tt) + εY,t
+    """
     return {
-        "noise_std": float(rng.uniform(*config.noise_std_range)),
-        "direct_effect": float(rng.uniform(*config.direct_effect_range)),
+        "persistence_factor_T": float(rng.uniform(*config.persistence_factor_range)),
+        "persistence_factor_Y": float(rng.uniform(*config.persistence_factor_range)),
+        "noise_std_T": float(rng.uniform(*config.noise_std_range)),
+        "noise_std_Y": float(rng.uniform(*config.noise_std_range)),
+        "beta_TY": float(rng.uniform(*config.direct_treatment_effect_range)),
     }
 
 
@@ -137,11 +154,20 @@ def _sample_direct_params(
 def _sample_chain_params(
     config: CausalStructureConfig, rng: np.random.Generator
 ) -> Dict[str, float]:
-    """Sample parameters for CHAIN structure — Z→T→Y."""
+    """Sample parameters for CHAIN (mediation) structure.
+
+    Tt = ΦT·Tt−1 + εT,t
+    Xt = βTX·f(Tt) + εX,t
+    Yt = ΦY·Yt−1 + βXY·f(Xt) + εY,t
+    """
     return {
-        "noise_std": float(rng.uniform(*config.noise_std_range)),
-        "confounder_effect": float(rng.uniform(*config.chain_confounder_effect_range)),
-        "treatment_effect": float(rng.uniform(*config.chain_treatment_effect_range)),
+        "persistence_factor_T": float(rng.uniform(*config.persistence_factor_range)),
+        "persistence_factor_Y": float(rng.uniform(*config.persistence_factor_range)),
+        "noise_std_T": float(rng.uniform(*config.noise_std_range)),
+        "noise_std_X": float(rng.uniform(*config.noise_std_range)),
+        "noise_std_Y": float(rng.uniform(*config.noise_std_range)),
+        "beta_TX": float(rng.uniform(*config.chain_tx_effect_range)),
+        "beta_XY": float(rng.uniform(*config.chain_xy_effect_range)),
     }
 
 
@@ -149,16 +175,44 @@ def _sample_chain_params(
 def _sample_confounder_params(
     config: CausalStructureConfig, rng: np.random.Generator
 ) -> Dict[str, float]:
-    """Sample parameters for CONFOUNDER structure — Z→T and Z→Y."""
+    """Sample parameters for CONFOUNDER structure.
+
+    Xt = ΦX·Xt−1 + εX,t
+    Tt = ΦT·Tt−1 + βXT·f(Xt) + εT,t
+    Yt = ΦY·Yt−1 + βXY·f(Xt) + βTY·g(Tt) + εY,t
+    """
     return {
-        "noise_std": float(rng.uniform(*config.noise_std_range)),
-        "confounder_on_treatment": float(
-            rng.uniform(*config.confounder_effect_on_treatment)
-        ),
-        "confounder_on_outcome": float(
-            rng.uniform(*config.confounder_effect_on_outcome)
-        ),
+        "persistence_factor_X": float(rng.uniform(*config.persistence_factor_range)),
+        "persistence_factor_T": float(rng.uniform(*config.persistence_factor_range)),
+        "persistence_factor_Y": float(rng.uniform(*config.persistence_factor_range)),
+        "noise_std_X": float(rng.uniform(*config.noise_std_range)),
+        "noise_std_T": float(rng.uniform(*config.noise_std_range)),
+        "noise_std_Y": float(rng.uniform(*config.noise_std_range)),
+        "beta_XT": float(rng.uniform(*config.confounder_xt_effect_range)),
+        "beta_XY": float(rng.uniform(*config.confounder_xy_effect_range)),
+        "beta_TY": float(rng.uniform(*config.confounder_ty_effect_range)),
     }
+
+
+# ---------------------------------------------------------------------------
+# Non-linear transformation functions f() and g()
+# ---------------------------------------------------------------------------
+
+
+def _default_f(x: np.ndarray) -> np.ndarray:
+    """Default non-linear transformation f: sigmoid squash.
+
+    Maps treatment/confounder values to [0, 1] with a soft S-curve.
+    """
+    return 1.0 / (1.0 + np.exp(-5.0 * (x - 0.5)))
+
+
+def _default_g(x: np.ndarray) -> np.ndarray:
+    """Default non-linear transformation g: quadratic amplification.
+
+    Allows treatment to have a non-linear (amplifying) effect on outcome.
+    """
+    return np.clip(x**2, 0, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -178,24 +232,6 @@ def _register_outcome(structure: CausalStructure) -> Callable[[Callable], Callab
     return decorator
 
 
-@_register_outcome(CausalStructure.NONE)
-def _outcome_none(
-    prev_interest: np.ndarray,
-    confounder: np.ndarray,
-    treatment: float,
-    treatment_effect: float,
-    params: Dict[str, float],
-    persistence_factor: float,
-    mean_reversion_strength: float,
-) -> np.ndarray:
-    """Y = AR(1) + beta*T + epsilon — no confounder path."""
-    ar = persistence_factor * prev_interest
-    treatment_component = treatment_effect * treatment
-    reversion = mean_reversion_strength * (confounder - prev_interest)
-    noise = np.random.normal(0, params["noise_std"], prev_interest.shape)
-    return np.clip(ar + treatment_component + reversion + noise, 0, 1)
-
-
 @_register_outcome(CausalStructure.DIRECT)
 def _outcome_direct(
     prev_interest: np.ndarray,
@@ -206,13 +242,29 @@ def _outcome_direct(
     persistence_factor: float,
     mean_reversion_strength: float,
 ) -> np.ndarray:
-    """Y = AR(1) + beta*T + epsilon — beta sampled from direct_effect_range."""
-    ar = persistence_factor * prev_interest
-    beta = params["direct_effect"]
-    treatment_component = beta * treatment
-    reversion = mean_reversion_strength * (confounder - prev_interest)
-    noise = np.random.normal(0, params["noise_std"], prev_interest.shape)
-    return np.clip(ar + treatment_component + reversion + noise, 0, 1)
+    """Yt = ΦY·Yt−1 + βTY·f(Tt) + εY,t
+
+    Args:
+        prev_interest: Yt−1 — previous day's outcome (n_cats,).
+        confounder: Not used in DIRECT (kept for uniform interface).
+        treatment: Tt — current day's treatment value (scalar).
+        treatment_effect: Not used directly; beta_TY from params is used.
+        params: Must contain 'persistence_factor_Y', 'beta_TY', 'noise_std_Y'.
+        persistence_factor: Fallback if not in params.
+        mean_reversion_strength: Not used in DIRECT (no mean reversion).
+
+    Returns:
+        Yt — outcome vector (n_cats,).
+    """
+    phi_Y = params.get("persistence_factor_Y", persistence_factor)
+    beta_TY = params.get("beta_TY", treatment_effect)
+    noise_std = params.get("noise_std_Y", 0.05)
+
+    ar = phi_Y * prev_interest
+    treatment_component = beta_TY * _default_f(np.full_like(prev_interest, treatment))
+    noise = np.random.normal(0, noise_std, prev_interest.shape)
+
+    return np.clip(ar + treatment_component + noise, 0, 1)
 
 
 @_register_outcome(CausalStructure.CHAIN)
@@ -225,16 +277,33 @@ def _outcome_chain(
     persistence_factor: float,
     mean_reversion_strength: float,
 ) -> np.ndarray:
-    """Y = AR(1) + alpha*Z + beta*T + epsilon — Z->T->Y, Z->Y path open."""
-    ar = persistence_factor * prev_interest
-    alpha = params["confounder_effect"]
-    confounder_component = alpha * confounder
-    treatment_component = treatment_effect * treatment
-    reversion = mean_reversion_strength * (confounder - prev_interest)
-    noise = np.random.normal(0, params["noise_std"], prev_interest.shape)
-    return np.clip(
-        ar + confounder_component + treatment_component + reversion + noise, 0, 1
-    )
+    """Yt = ΦY·Yt−1 + βXY·f(Xt) + εY,t
+
+    The mediator Xt is computed from the treatment: Xt = βTX·f(Tt) + εX,t.
+    The confounder argument is used to pass the mediator Xt (pre-computed
+    by the caller in AleatoryCausalMachine for the CHAIN structure).
+
+    Args:
+        prev_interest: Yt−1 — previous day's outcome (n_cats,).
+        confounder: Xt — mediator value (n_cats,), pre-computed from treatment.
+        treatment: Tt — not used directly in CHAIN outcome (mediated via X).
+        treatment_effect: Not used directly; beta_XY from params is used.
+        params: Must contain 'persistence_factor_Y', 'beta_XY', 'noise_std_Y'.
+        persistence_factor: Fallback if not in params.
+        mean_reversion_strength: Not used in CHAIN (no mean reversion).
+
+    Returns:
+        Yt — outcome vector (n_cats,).
+    """
+    phi_Y = params.get("persistence_factor_Y", persistence_factor)
+    beta_XY = params.get("beta_XY", treatment_effect)
+    noise_std = params.get("noise_std_Y", 0.05)
+
+    ar = phi_Y * prev_interest
+    mediator_component = beta_XY * _default_f(confounder)
+    noise = np.random.normal(0, noise_std, prev_interest.shape)
+
+    return np.clip(ar + mediator_component + noise, 0, 1)
 
 
 @_register_outcome(CausalStructure.CONFOUNDER)
@@ -247,16 +316,32 @@ def _outcome_confounder(
     persistence_factor: float,
     mean_reversion_strength: float,
 ) -> np.ndarray:
-    """Y = AR(1) + alpha*Z + beta*T + epsilon — Z->T and Z->Y, both open."""
-    ar = persistence_factor * prev_interest
-    alpha = params["confounder_on_outcome"]
-    confounder_component = alpha * confounder
-    treatment_component = treatment_effect * treatment
-    reversion = mean_reversion_strength * (confounder - prev_interest)
-    noise = np.random.normal(0, params["noise_std"], prev_interest.shape)
-    return np.clip(
-        ar + confounder_component + treatment_component + reversion + noise, 0, 1
-    )
+    """Yt = ΦY·Yt−1 + βXY·f(Xt) + βTY·g(Tt) + εY,t
+
+    Args:
+        prev_interest: Yt−1 — previous day's outcome (n_cats,).
+        confounder: Xt — confounder value (n_cats,).
+        treatment: Tt — current day's treatment value (scalar).
+        treatment_effect: Not used directly; beta_TY from params is used.
+        params: Must contain 'persistence_factor_Y', 'beta_XY', 'beta_TY',
+                'noise_std_Y'.
+        persistence_factor: Fallback if not in params.
+        mean_reversion_strength: Not used in CONFOUNDER (no mean reversion).
+
+    Returns:
+        Yt — outcome vector (n_cats,).
+    """
+    phi_Y = params.get("persistence_factor_Y", persistence_factor)
+    beta_XY = params.get("beta_XY", 0.3)
+    beta_TY = params.get("beta_TY", treatment_effect)
+    noise_std = params.get("noise_std_Y", 0.05)
+
+    ar = phi_Y * prev_interest
+    confounder_component = beta_XY * _default_f(confounder)
+    treatment_component = beta_TY * _default_g(np.full_like(prev_interest, treatment))
+    noise = np.random.normal(0, noise_std, prev_interest.shape)
+
+    return np.clip(ar + confounder_component + treatment_component + noise, 0, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -276,18 +361,6 @@ def _register_treatment(structure: CausalStructure) -> Callable[[Callable], Call
     return decorator
 
 
-@_register_treatment(CausalStructure.NONE)
-def _treatment_none(
-    base_exposure: float,
-    confounder_mean: float,
-    params: Dict[str, float],
-    rng: np.random.Generator,
-) -> float:
-    """Treatment independent of confounders."""
-    campaign_noise = rng.beta(2, 5) if rng.random() < 0.1 else rng.beta(1, 3) * 0.3
-    return float(np.clip(base_exposure + campaign_noise, 0, 1))
-
-
 @_register_treatment(CausalStructure.DIRECT)
 def _treatment_direct(
     base_exposure: float,
@@ -295,9 +368,23 @@ def _treatment_direct(
     params: Dict[str, float],
     rng: np.random.Generator,
 ) -> float:
-    """Treatment independent of confounders (direct effect is in outcome eq)."""
-    campaign_noise = rng.beta(2, 5) if rng.random() < 0.1 else rng.beta(1, 3) * 0.3
-    return float(np.clip(base_exposure + campaign_noise, 0, 1))
+    """Tt = ΦT·Tt−1 + εT,t — treatment evolves as its own AR(1) process.
+
+    Note: The caller (AleatoryCausalMachine) handles the AR(1) recursion.
+    This function generates the noise term εT,t for the current day.
+
+    Args:
+        base_exposure: Base treatment level from persona.
+        confounder_mean: Not used in DIRECT.
+        params: Must contain 'noise_std_T'.
+        rng: Random generator.
+
+    Returns:
+        Treatment value in [0, 1].
+    """
+    noise_std = params.get("noise_std_T", 0.05)
+    noise = rng.normal(0, noise_std)
+    return float(np.clip(base_exposure + noise, 0, 1))
 
 
 @_register_treatment(CausalStructure.CHAIN)
@@ -307,10 +394,23 @@ def _treatment_chain(
     params: Dict[str, float],
     rng: np.random.Generator,
 ) -> float:
-    """Z -> T: confounders influence treatment assignment."""
-    confounder_influence = params["confounder_effect"] * confounder_mean
-    campaign_noise = rng.beta(2, 5) if rng.random() < 0.1 else rng.beta(1, 3) * 0.3
-    return float(np.clip(base_exposure + confounder_influence + campaign_noise, 0, 1))
+    """Tt = ΦT·Tt−1 + εT,t — same as DIRECT (no confounder influence on T).
+
+    In the CHAIN (mediation) structure, treatment is independent of
+    confounders. The mediation happens via T → X → Y.
+
+    Args:
+        base_exposure: Base treatment level from persona.
+        confounder_mean: Not used in CHAIN.
+        params: Must contain 'noise_std_T'.
+        rng: Random generator.
+
+    Returns:
+        Treatment value in [0, 1].
+    """
+    noise_std = params.get("noise_std_T", 0.05)
+    noise = rng.normal(0, noise_std)
+    return float(np.clip(base_exposure + noise, 0, 1))
 
 
 @_register_treatment(CausalStructure.CONFOUNDER)
@@ -320,10 +420,88 @@ def _treatment_confounder(
     params: Dict[str, float],
     rng: np.random.Generator,
 ) -> float:
-    """Z -> T: confounders influence treatment assignment."""
-    confounder_influence = params["confounder_on_treatment"] * confounder_mean
-    campaign_noise = rng.beta(2, 5) if rng.random() < 0.1 else rng.beta(1, 3) * 0.3
-    return float(np.clip(base_exposure + confounder_influence + campaign_noise, 0, 1))
+    """Tt = ΦT·Tt−1 + βXT·f(Xt) + εT,t — confounder influences treatment.
+
+    Note: The AR(1) part ΦT·Tt−1 is handled by the caller. This function
+    generates the confounder influence βXT·f(Xt) + εT,t.
+
+    Args:
+        base_exposure: Base treatment level from persona.
+        confounder_mean: Mean of confounder Xt across categories.
+        params: Must contain 'beta_XT', 'noise_std_T'.
+        rng: Random generator.
+
+    Returns:
+        Treatment value in [0, 1].
+    """
+    beta_XT = params.get("beta_XT", 0.3)
+    noise_std = params.get("noise_std_T", 0.05)
+    confounder_influence = beta_XT * float(_default_f(np.array([confounder_mean]))[0])
+    noise = rng.normal(0, noise_std)
+    return float(np.clip(base_exposure + confounder_influence + noise, 0, 1))
+
+
+# ---------------------------------------------------------------------------
+# Mediator generation for CHAIN structure
+# ---------------------------------------------------------------------------
+
+_MEDIATOR_GENERATORS: Dict[CausalStructure, Callable[..., np.ndarray]] = {}
+
+
+def _register_mediator(structure: CausalStructure) -> Callable[[Callable], Callable]:
+    """Decorator to register a mediator generator for a causal structure."""
+
+    def decorator(fn: Callable[..., np.ndarray]) -> Callable[..., np.ndarray]:
+        _MEDIATOR_GENERATORS[structure] = fn
+        return fn
+
+    return decorator
+
+
+@_register_mediator(CausalStructure.CHAIN)
+def _mediator_chain(
+    treatment: float,
+    params: Dict[str, float],
+    n_categories: int,
+) -> np.ndarray:
+    """Xt = βTX·f(Tt) + εX,t — mediator is a function of treatment.
+
+    Args:
+        treatment: Tt — current day's treatment value (scalar).
+        params: Must contain 'beta_TX', 'noise_std_X'.
+        n_categories: Number of categories (dimensionality of X).
+
+    Returns:
+        Xt — mediator vector (n_categories,).
+    """
+    beta_TX = params.get("beta_TX", 0.3)
+    noise_std = params.get("noise_std_X", 0.05)
+    tx_component = beta_TX * _default_f(np.full(n_categories, treatment))
+    noise = np.random.normal(0, noise_std, n_categories)
+    return np.clip(tx_component + noise, 0, 1)
+
+
+@_register_mediator(CausalStructure.CONFOUNDER)
+def _mediator_confounder(
+    treatment: float,
+    params: Dict[str, float],
+    n_categories: int,
+) -> np.ndarray:
+    """Xt = ΦX·Xt−1 + εX,t — confounder evolves as its own AR(1) process.
+
+    Note: The AR(1) recursion is handled by the caller. This function
+    generates the noise term for the current day.
+
+    Args:
+        treatment: Not used in CONFOUNDER mediator (X is independent of T).
+        params: Must contain 'noise_std_X'.
+        n_categories: Number of categories.
+
+    Returns:
+        Xt — confounder noise vector (n_categories,).
+    """
+    noise_std = params.get("noise_std_X", 0.05)
+    return np.random.normal(0, noise_std, n_categories)
 
 
 # ---------------------------------------------------------------------------
@@ -416,4 +594,27 @@ def get_treatment_generator(structure: CausalStructure) -> Callable[..., float]:
     generator = _TREATMENT_GENERATORS.get(structure)
     if generator is None:
         raise ValueError(f"No treatment generator registered for {structure}")
+    return generator
+
+
+def get_mediator_generator(structure: CausalStructure) -> Callable[..., np.ndarray]:
+    """Get the mediator/confounder generation function for a causal structure.
+
+    For CHAIN: generates Xt = βTX·f(Tt) + εX,t (mediator from treatment).
+    For CONFOUNDER: generates noise for Xt = ΦX·Xt−1 + εX,t (AR(1) confounder).
+    For DIRECT: raises ValueError (no mediator in DIRECT).
+
+    Args:
+        structure: The causal structure.
+
+    Returns:
+        Callable with signature:
+            (treatment, params, n_categories) -> np.ndarray
+
+    Raises:
+        ValueError: If no mediator generator is registered for the structure.
+    """
+    generator = _MEDIATOR_GENERATORS.get(structure)
+    if generator is None:
+        raise ValueError(f"No mediator generator registered for {structure}")
     return generator

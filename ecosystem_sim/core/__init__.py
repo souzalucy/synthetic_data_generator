@@ -28,8 +28,14 @@ from .causal_structure import (
     CausalStructureSampler,
     get_outcome_equation,
     get_treatment_generator,
+    get_mediator_generator,
 )
 from .aleatory_causal_machine import AleatoryCausalConfig, AleatoryCausalMachine
+from .counterfactual_regimes import (
+    InterventionRegime,
+    get_delta_fn,
+    list_available_regimes,
+)
 
 __all__ = [
     "IncomeLevel",
@@ -58,6 +64,10 @@ __all__ = [
     "CausalStructureSampler",
     "get_outcome_equation",
     "get_treatment_generator",
+    "get_mediator_generator",
     "AleatoryCausalConfig",
     "AleatoryCausalMachine",
+    "InterventionRegime",
+    "get_delta_fn",
+    "list_available_regimes",
 ]

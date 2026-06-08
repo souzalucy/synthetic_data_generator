@@ -30,6 +30,7 @@ from ecosystem_sim.streams import (
 )
 from ecosystem_sim.intelligence import (
     GraphStitcher,
+    GroundTruthGraphBuilder,
     CounterfactualGraphStitcher,
     PropensityModels,
     LiftAnalyzer,
@@ -301,7 +302,7 @@ def run_simulation(config: Dict, output_dir: str):
 
     print(f"  * Generated {total_events} total events")
 
-    # Phase 4: Export raw events
+    # Phase 4: Export raw events (anonymized only)
     print("\n[PHASE 4] Exporting raw event logs...")
     raw_logs_dir = output_path / "raw_logs"
     raw_logs_dir.mkdir(exist_ok=True)
@@ -309,17 +310,27 @@ def run_simulation(config: Dict, output_dir: str):
     for stream_name, stream in streams.items():
         filepath = raw_logs_dir / f"{stream_name}_events.jsonl"
         stream.export_events(str(filepath))
-        print(f"  * {stream_name}: {len(stream.events)} events")
+        print(f"  * {stream_name}: {len(stream.events)} events (anonymized)")
 
     # Phase 5: Intelligence layer
     print("\n[PHASE 5] Running intelligence layer...")
 
-    # Collect all events
+    # Collect anonymized events (for interaction graph construction)
     all_events = []
-    for stream in tqdm(streams.values(), desc="  Collecting events", leave=False):
+    for stream in tqdm(
+        streams.values(), desc="  Collecting anonymized events", leave=False
+    ):
         all_events.extend(stream.events)
 
-    print(f"  Total events: {len(all_events)}")
+    # Collect ground-truth events (always have real user_id, never exported)
+    all_gt_events = []
+    for stream in tqdm(
+        streams.values(), desc="  Collecting ground-truth events", leave=False
+    ):
+        all_gt_events.extend(stream.events_ground_truth)
+
+    print(f"  Total anonymized events: {len(all_events)}")
+    print(f"  Total ground-truth events: {len(all_gt_events)}")
 
     # Read intelligence config (CLI overrides or defaults)
     intel_config = config.get("intelligence", {})
@@ -327,49 +338,105 @@ def run_simulation(config: Dict, output_dir: str):
     campaign_day = intel_config.get("campaign_day", 14)
     campaign_id = intel_config.get("campaign_id", "campaign_001")
 
-    # Graph stitching
-    print("  [5a] Device stitching...")
-    stitcher = GraphStitcher(confidence_threshold=confidence_threshold)
-    stitched_data = stitcher.stitch_events(all_events)
+    # ------------------------------------------------------------------
+    # [5a] Ground-truth graph construction (replaces heuristic stitching)
+    # ------------------------------------------------------------------
+    print("  [5a] Building ground-truth graphs (deterministic)...")
 
-    stitched_path = output_path / "stitched_data.json"
-    with open(stitched_path, "w") as f:
+    # Build all three ground-truth graph views
+    gt_graphs = GroundTruthGraphBuilder.build_all(all_gt_events)
+    gt_metrics = GroundTruthGraphBuilder.compute_metrics(gt_graphs["user_log"])
+
+    print(
+        f"  * User→Device graph: {gt_graphs['user_device'].number_of_nodes()} nodes, "
+        f"{gt_graphs['user_device'].number_of_edges()} edges"
+    )
+    print(
+        f"  * User→Event graph:  {gt_graphs['user_event'].number_of_nodes()} nodes, "
+        f"{gt_graphs['user_event'].number_of_edges()} edges"
+    )
+    print(
+        f"  * User→Log graph:    {gt_graphs['user_log'].number_of_nodes()} nodes, "
+        f"{gt_graphs['user_log'].number_of_edges()} edges"
+    )
+    print(
+        f"  * {gt_metrics['n_user_nodes']} users connected to "
+        f"{gt_metrics['n_log_nodes']} log entries "
+        f"(avg {gt_metrics['avg_logs_per_user']} logs/user)"
+    )
+
+    # Export ground-truth graphs as serializable JSON
+    gt_graphs_path = output_path / "ground_truth_graphs.json"
+    with open(gt_graphs_path, "w") as f:
         json.dump(
             _convert_to_native(
                 {
-                    "clusters": stitched_data["device_clusters"],
-                    "metrics": stitched_data["metrics"],
-                    "inferred_user_ids": stitched_data.get("inferred_user_ids", {}),
+                    name: GroundTruthGraphBuilder.to_serializable(g)
+                    for name, g in gt_graphs.items()
                 }
             ),
             f,
             indent=2,
         )
-    print(
-        f"  * Stitched {stitched_data['metrics']['n_devices']} devices -> {len(stitched_data['device_clusters'])} clusters"
-    )
-    print(
-        f"  * Inferred user_ids for {len(stitched_data.get('inferred_user_ids', {}))} unidentified events"
-    )
+    print(f"  * Exported ground-truth graphs to {gt_graphs_path}")
 
-    # Interaction graph construction (Layer 3)
-    print("  [5b] Building interaction graphs...")
-    interaction_graphs = stitcher.build_interaction_graphs(all_events)
-    ig_metrics = interaction_graphs["metrics"]
+    # Also export the ground-truth device mapping and clusters (for backward compat)
+    gt_mapping = GraphStitcher.build_ground_truth_mapping(all_gt_events)
+    gt_clusters = GraphStitcher.build_ground_truth_clusters(all_gt_events)
     print(
-        f"  * Built {ig_metrics['n_users_with_graphs']} user graphs: "
-        f"{ig_metrics['total_edges']} edges across {ig_metrics['total_events']} events"
+        f"  * Device mapping: {len(gt_mapping)} devices across {len(gt_clusters)} users"
     )
 
-    # Export interaction graphs
-    ig_path = output_path / "interaction_graphs.json"
-    stitcher.export_interaction_graphs(interaction_graphs, str(ig_path))
-    print(f"  * Exported interaction graphs to {ig_path}")
+    # Export ground-truth device mapping
+    gt_mapping_path = output_path / "ground_truth_device_mapping.json"
+    with open(gt_mapping_path, "w") as f:
+        json.dump(
+            _convert_to_native(
+                {
+                    "device_to_user": gt_mapping,
+                    "user_to_devices": gt_clusters,
+                    "n_devices": len(gt_mapping),
+                    "n_users": len(gt_clusters),
+                }
+            ),
+            f,
+            indent=2,
+        )
+    print(f"  * Exported ground-truth device mapping to {gt_mapping_path}")
 
-    # Propensity models
+    # ------------------------------------------------------------------
+    # [5b] Interaction graph construction (Layer 3)
+    # ------------------------------------------------------------------
+    # Only build interaction graphs if visualization is enabled downstream,
+    # since this is the only consumer. The edge buffer can consume significant
+    # disk space (~hundreds of MB for 500 users), so skip when not needed.
+    viz_enabled = config.get("visualization", {}).get("enabled", False)
+    if viz_enabled:
+        print("  [5b] Building interaction graphs...")
+        stitcher = GraphStitcher(confidence_threshold=confidence_threshold)
+        # Edges are streamed to a temporary file to avoid holding all edges in RAM
+        interaction_graphs = stitcher.build_interaction_graphs(all_events)
+        ig_metrics = interaction_graphs["metrics"]
+        print(
+            f"  * Built {ig_metrics['n_users_with_graphs']} user graphs: "
+            f"{ig_metrics['total_edges']} edges across {ig_metrics['total_events']} events"
+        )
+
+        # Export interaction graphs (reads from the streaming buffer, then cleans it up)
+        ig_path = output_path / "interaction_graphs.json"
+        stitcher.export_interaction_graphs(interaction_graphs, str(ig_path))
+        print(f"  * Exported interaction graphs to {ig_path}")
+    else:
+        print("  [5b] Skipping interaction graphs (visualization disabled)")
+        interaction_graphs = None
+        ig_path = None
+
+    # Propensity models (uses ground-truth event data)
     print("  [5c] Calculating propensity scores...")
     propensity = PropensityModels(priors=priors)
-    propensity_scores = propensity.calculate_all(stitched_data)
+    propensity_scores = propensity.calculate_all(
+        {"events": all_gt_events, "n_events": len(all_gt_events)}
+    )
     print(f"  * Calculated scores for all users")
 
     # Lift analysis
@@ -454,7 +521,7 @@ def run_simulation(config: Dict, output_dir: str):
             causal_csv_path=str(causal_table_path),
             causal_cf_csv_path=str(causal_cf_table_path),
             interaction_graphs_path=str(ig_path),
-            stitched_data_path=str(stitched_path),
+            stitched_data_path=str(gt_mapping_path),
             lift_report_path=str(lift_path),
             counterfactual_report_path=str(cf_path)
             if config.get("scm", {})

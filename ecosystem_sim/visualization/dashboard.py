@@ -30,7 +30,6 @@ from ecosystem_sim.visualization.timeseries_viz import (
     plot_interest_heatmap,
     plot_treatment_matrix,
     plot_user_counterfactual_comparison,
-    plot_counterfactual_table,
     render_timeseries_tab,
 )
 from ecosystem_sim.visualization.distribution_viz import (
@@ -127,12 +126,16 @@ def generate_all_visualizations(
         print(f"  * Interaction graphs: {len(files)} pages generated")
 
     st_data = load_json(st_path)
+    gt_data = load_json(gt_path)
     if st_data:
+        # st_data now points to ground_truth_device_mapping.json
         filepath = plot_device_stitching_graph(
-            st_data, str(viz_out), explainer=explainer
+            st_data,
+            str(viz_out),
+            explainer=explainer,
         )
         generated["device_stitching"] = filepath
-        print(f"  * Device stitching graph: {filepath}")
+        print(f"  * Ground-truth device mapping graph: {filepath}")
 
     cf_data = load_json(cf_path)
     if cf_data:
@@ -155,17 +158,24 @@ def generate_all_visualizations(
         generated["persona_trajectories"] = result
         print(f"  * Persona trajectories: {result}")
 
-    gt_data = load_json(gt_path)
     if gt_data:
-        interest_matrix = gt_data.get(
-            "interest_matrix", gt_data.get("interest_trajectories")
-        )
-        if interest_matrix:
+        # Prefer the stored interest_matrix (real data) if available;
+        # otherwise fall back to synthetic reconstruction from statistics.
+        interest_matrix_raw = gt_data.get("interest_matrix")
+        if interest_matrix_raw is not None:
             result = plot_interest_heatmap(
-                interest_matrix, gt_path, str(viz_out), explainer=explainer
+                interest_matrix=interest_matrix_raw,
+                output_dir=str(viz_out),
+                explainer=explainer,
             )
-            generated["interest_heatmap"] = result
-            print(f"  * Interest heatmap: {result}")
+        else:
+            result = plot_interest_heatmap(
+                ground_truth_path=gt_path,
+                output_dir=str(viz_out),
+                explainer=explainer,
+            )
+        generated["interest_heatmap"] = result
+        print(f"  * Interest heatmap: {result}")
 
         result = plot_treatment_matrix(gt_path, str(viz_out), explainer=explainer)
         generated["treatment_matrix"] = result
@@ -178,12 +188,6 @@ def generate_all_visualizations(
         )
         generated["user_counterfactual_comparison"] = result
         print(f"  * User counterfactual comparison: {result}")
-
-        result = plot_counterfactual_table(
-            cf_csv_path, str(viz_out), explainer=explainer
-        )
-        generated["counterfactual_table"] = result
-        print(f"  * Counterfactual table: {result}")
 
     # 3. Distribution visualizations ----------------------------------------
     print("\n[VIZ] Generating distribution visualizations...")
@@ -264,7 +268,6 @@ def _generate_index_page(generated: Dict[str, str], output_path: str):
                 "User Counterfactual Comparison",
                 generated.get("user_counterfactual_comparison"),
             ),
-            ("Counterfactual Table", generated.get("counterfactual_table")),
         ],
         "Distribution Visualizations": [
             ("Lift Deciles", generated.get("lift_deciles")),

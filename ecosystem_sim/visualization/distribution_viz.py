@@ -525,18 +525,23 @@ def plot_cluster_size_distribution(
     output_dir: str,
     explainer: Optional["VisualizationExplainer"] = None,
 ) -> str:
-    """Visualize device cluster size distribution.
+    """Visualize ground-truth user→device cluster size distribution.
+
+    Reads ``user_to_devices`` from the ground-truth device mapping.
 
     Args:
-        stitched_data: Loaded stitched_data.json dict
+        stitched_data: Loaded ground_truth_device_mapping.json dict
         output_dir: Output directory for HTML file
 
     Returns:
         Path to generated HTML file
     """
     viz_dir = ensure_output_dir(output_dir, "distributions")
-    clusters = stitched_data.get("clusters", {})
-    metrics = stitched_data.get("metrics", {})
+
+    # Support both old stitched_data.json format and new ground-truth format
+    clusters = stitched_data.get("user_to_devices", stitched_data.get("clusters", {}))
+    n_users = stitched_data.get("n_users", len(clusters))
+    n_devices = stitched_data.get("n_devices", 0)
 
     if not clusters:
         fig = go.Figure()
@@ -550,7 +555,7 @@ def plot_cluster_size_distribution(
     fig = make_subplots(
         rows=1,
         cols=2,
-        subplot_titles=("Cluster Size Distribution", "Cluster Size Box Plot"),
+        subplot_titles=("Devices per User (Cluster Size)", "Devices per User Box Plot"),
         specs=[[{"type": "bar"}, {"type": "box"}]],
     )
 
@@ -560,10 +565,10 @@ def plot_cluster_size_distribution(
         go.Bar(
             x=size_counts.index,
             y=size_counts.values,
-            marker_color="#636EFA",
+            marker_color="#00CC96",
             text=size_counts.values,
             textposition="outside",
-            name="Cluster Sizes",
+            name="Devices per User",
         ),
         row=1,
         col=1,
@@ -573,9 +578,9 @@ def plot_cluster_size_distribution(
     fig.add_trace(
         go.Box(
             y=cluster_sizes,
-            name="Cluster Size",
+            name="Devices per User",
             boxmean=True,
-            marker_color="#EF553B",
+            marker_color="#AB63FA",
             boxpoints="all",
             jitter=0.3,
             pointpos=-1.8,
@@ -585,18 +590,17 @@ def plot_cluster_size_distribution(
     )
 
     fig.update_layout(
-        title=f"Device Cluster Size Distribution "
-        f"({metrics.get('n_clusters', 0)} clusters, "
-        f"{metrics.get('n_devices', 0)} devices)",
+        title=f"Ground-Truth Devices per User "
+        f"({n_users} users, {n_devices} devices)",
         title_x=0.5,
         height=450,
         width=900,
         plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
     )
-    fig.update_xaxes(title_text="Cluster Size", row=1, col=1)
+    fig.update_xaxes(title_text="Devices per User", row=1, col=1)
     fig.update_yaxes(title_text="Count", row=1, col=1)
-    fig.update_yaxes(title_text="Devices per Cluster", row=1, col=2)
+    fig.update_yaxes(title_text="Devices per User", row=1, col=2)
 
     filepath = viz_dir / "cluster_size_distribution.html"
     fig.write_html(str(filepath))
@@ -604,10 +608,15 @@ def plot_cluster_size_distribution(
         html = Path(filepath).read_text(encoding="utf-8")
         explanation = explainer.explain(
             "cluster_size_distribution",
-            {"clusters": clusters, "metrics": metrics, "stitched_data": stitched_data},
+            {
+                "clusters": clusters,
+                "n_users": n_users,
+                "n_devices": n_devices,
+                "is_ground_truth": True,
+            },
         )
         html = VisualizationExplainer.inject_explanation_button(
-            html, explanation, "Cluster Size Distribution"
+            html, explanation, "Ground-Truth Devices per User"
         )
         Path(filepath).write_text(html, encoding="utf-8")
     return str(filepath)

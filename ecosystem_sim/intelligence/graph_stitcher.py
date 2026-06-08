@@ -1,80 +1,276 @@
-"""Device stitching and graph construction with SNAP network structures."""
+"""Interaction graph construction from event data.
+
+Provides ground-truth device stitching utilities and temporal interaction
+graph construction for Layer 3 analysis.
+
+The heuristic/probabilistic device stitching (IP, GPS, behavioral fingerprinting)
+has been removed. Ground-truth graph construction is now handled by the
+dedicated :class:`GroundTruthGraphBuilder` class in ``ground_truth_graph.py``.
+"""
 
 import json
+import os
+import tempfile
 import numpy as np
 from typing import List, Dict, Tuple, Set, Optional, Any
-from collections import defaultdict
+from collections import defaultdict, deque
 import networkx as nx
 from datetime import datetime, timedelta
 import math
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
 
 class GraphStitcher:
-    """Probabilistic device matching and user stitching with SNAP network patterns."""
+    """Interaction graph construction and ground-truth stitching utilities.
+
+    This class now focuses on:
+    1. Ground-truth device stitching (deterministic mapping from known events).
+    2. Temporal interaction graph construction (Layer 3 event graphs).
+
+    The heuristic/probabilistic device stitching methods (``stitch_events``,
+    ``_ip_based_matching``, ``_gps_based_matching``, ``_behavioral_fingerprinting``,
+    ``_build_combined_graph``, ``_apply_community_detection``) have been removed.
+    Use :class:`GroundTruthGraphBuilder` for deterministic ground-truth graphs.
+    """
 
     def __init__(
         self, confidence_threshold: float = 0.7, network_priors: Optional[Dict] = None
     ):
-        """Initialize graph stitcher with SNAP network patterns."""
+        """Initialize graph stitcher.
+
+        Args:
+            confidence_threshold: Threshold for device stitching confidence
+                (kept for backward compatibility, no longer used for heuristics).
+            network_priors: Optional SNAP network priors (kept for compatibility).
+        """
         self.confidence_threshold = confidence_threshold
         self.network_priors = network_priors or {}
 
-        # SNAP network patterns
+        # SNAP network patterns (kept for backward compatibility)
         self.degree_distribution = self.network_priors.get("degree_distribution", {})
         self.clustering_coefficient = self.network_priors.get(
             "clustering_coefficient", 0.1
         )
 
-        # Network graphs
-        self.combined_graph = nx.Graph()
-
         # Inferred user_id mappings (Layer 3)
         self.inferred_user_map: Dict[str, str] = {}  # event_id -> inferred_user_id
 
-    def stitch_events(self, events: List[Dict]) -> Dict:
-        """Probabilistically stitch devices to users using SNAP network patterns."""
-        # Extract links from different evidence sources (parallelized)
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {
-                executor.submit(self._extract_explicit_links, events): "explicit",
-                executor.submit(self._ip_based_matching, events): "ip",
-                executor.submit(self._gps_based_matching, events): "gps",
-                executor.submit(self._behavioral_fingerprinting, events): "behavior",
-            }
-            results = {}
-            for future in tqdm(
-                as_completed(futures),
-                total=len(futures),
-                desc="  [5a] Matching sources",
-                leave=False,
-            ):
-                name = futures[future]
-                results[name] = future.result()
+    # ------------------------------------------------------------------
+    # Ground-truth device stitching (deterministic)
+    # ------------------------------------------------------------------
 
-        explicit_links = results["explicit"]
-        ip_links = results["ip"]
-        gps_links = results["gps"]
-        behavior_links = results["behavior"]
+    @staticmethod
+    def build_ground_truth_mapping(
+        ground_truth_events: List[Dict],
+    ) -> Dict[str, str]:
+        """Build a deterministic device→user mapping from ground-truth events.
 
-        # Build combined graph
-        self._build_combined_graph(ip_links, gps_links, behavior_links)
+        Unlike the probabilistic stitching in stitch_events(), this method
+        simply reads the real user_id from each ground-truth event, producing
+        a 100% accurate device-to-user mapping.
 
-        # Apply community detection
-        final_clusters = self._apply_community_detection(explicit_links)
+        Args:
+            ground_truth_events: List of events where ``user_id`` is always
+                the real user (never anonymized).
 
-        # Infer user_id for unidentified events (Layer 3)
-        self._infer_missing_user_ids(events, final_clusters)
+        Returns:
+            Dict mapping ``device_id → user_id``. If a device appears in
+            multiple events, the last assignment wins (all should agree).
+        """
+        mapping: Dict[str, str] = {}
+        for event in ground_truth_events:
+            uid = event.get("user_id")
+            did = event.get("device_id")
+            if uid and did:
+                mapping[did] = uid
+        return mapping
 
-        # Compute metrics
-        metrics = self._compute_metrics(final_clusters, events)
+    @staticmethod
+    def build_ground_truth_clusters(
+        ground_truth_events: List[Dict],
+    ) -> Dict[str, List[str]]:
+        """Build deterministic device clusters from ground-truth events.
+
+        Groups devices by their real user_id, producing the true
+        device-to-user cluster assignment.
+
+        Args:
+            ground_truth_events: List of events with real user_id.
+
+        Returns:
+            Dict mapping ``user_id → [device_id, ...]``.
+        """
+        clusters: Dict[str, set] = {}
+        for event in ground_truth_events:
+            uid = event.get("user_id")
+            did = event.get("device_id")
+            if uid and did:
+                clusters.setdefault(uid, set()).add(did)
+        return {uid: sorted(devices) for uid, devices in clusters.items()}
+
+    @staticmethod
+    def compare_stitching_accuracy(
+        stitched_data: Dict,
+        ground_truth_events: List[Dict],
+    ) -> Dict:
+        """Compare stitching results against deterministic ground truth.
+
+        Evaluates how well a stitching algorithm performed by comparing its
+        inferred device clusters against the true device-to-user assignment
+        from ground-truth events.
+
+        Args:
+            stitched_data: Dict containing ``device_clusters`` (or ``clusters``)
+                and ``inferred_user_ids``.
+            ground_truth_events: List of events with real user_id
+                (from ``BaseStream.events_ground_truth``).
+
+        Returns:
+            Dict with accuracy metrics:
+            - ``accuracy``: fraction of devices assigned to the correct cluster
+            - ``precision``: fraction of stitched clusters that are pure
+            - ``recall``: fraction of true user clusters recovered
+            - ``f1_score``: harmonic mean of precision and recall
+            - ``correct_assignments``, ``total_devices``, etc.
+        """
+        # Build ground-truth device→user mapping
+        gt_device_to_user = GraphStitcher.build_ground_truth_mapping(
+            ground_truth_events
+        )
+        gt_clusters = GraphStitcher.build_ground_truth_clusters(ground_truth_events)
+
+        # Build stitched device→cluster mapping
+        # Support both "device_clusters" (runtime) and "clusters" (serialized) keys
+        stitched_clusters = stitched_data.get(
+            "device_clusters",
+            stitched_data.get("clusters", {}),
+        )
+        stitched_device_to_cluster: Dict[str, str] = {}
+        for cluster_id, devices in stitched_clusters.items():
+            for device in devices:
+                stitched_device_to_cluster[device] = cluster_id
+
+        # --- Per-device accuracy ---
+        correct = 0
+        total = 0
+        device_results = []
+
+        for device, true_user in gt_device_to_user.items():
+            if device not in stitched_device_to_cluster:
+                device_results.append(
+                    {
+                        "device": device,
+                        "true_user": true_user,
+                        "correct": False,
+                        "reason": "not_stitched",
+                    }
+                )
+                total += 1
+                continue
+
+            predicted_cluster = stitched_device_to_cluster[device]
+            cluster_devices = stitched_clusters.get(predicted_cluster, [])
+
+            # Check if any device in this cluster maps to the true user
+            cluster_users = set(
+                gt_device_to_user.get(d)
+                for d in cluster_devices
+                if d in gt_device_to_user
+            )
+            is_correct = true_user in cluster_users
+            if is_correct:
+                correct += 1
+            total += 1
+
+            device_results.append(
+                {
+                    "device": device,
+                    "true_user": true_user,
+                    "predicted_cluster": predicted_cluster,
+                    "correct": is_correct,
+                }
+            )
+
+        accuracy = correct / total if total > 0 else 0.0
+
+        # --- Cluster-level precision & recall ---
+        # Precision: for each stitched cluster, what fraction of its devices
+        # belong to the majority user?
+        precision_sum = 0.0
+        n_stitched_with_devices = 0
+        for cluster_id, devices in stitched_clusters.items():
+            if not devices:
+                continue
+            # Count devices per true user in this cluster
+            user_counts: Dict[str, int] = {}
+            for d in devices:
+                u = gt_device_to_user.get(d)
+                if u:
+                    user_counts[u] = user_counts.get(u, 0) + 1
+            if not user_counts:
+                continue
+            majority_count = max(user_counts.values())
+            precision_sum += majority_count / len(devices)
+            n_stitched_with_devices += 1
+
+        precision = (
+            precision_sum / n_stitched_with_devices
+            if n_stitched_with_devices > 0
+            else 0.0
+        )
+
+        # Recall: for each true user cluster, what fraction of its devices
+        # were stitched together (i.e., assigned to the same stitched cluster)?
+        recall_sum = 0.0
+        n_true_clusters = 0
+        for true_user, true_devices in gt_clusters.items():
+            if len(true_devices) < 2:
+                continue  # single-device users don't test stitching
+            # Find which stitched cluster(s) these devices landed in
+            assigned_clusters = set(
+                stitched_device_to_cluster.get(d)
+                for d in true_devices
+                if d in stitched_device_to_cluster
+            )
+            assigned_clusters.discard(None)
+            if not assigned_clusters:
+                continue
+            # If all devices are in one stitched cluster → perfect recall for this user
+            # If split across clusters → partial recall
+            # We use: fraction of device pairs that ended up together
+            n_pairs = len(true_devices) * (len(true_devices) - 1) / 2
+            if n_pairs == 0:
+                continue
+            # Count pairs that stayed together (same stitched cluster)
+            together = 0
+            for i in range(len(true_devices)):
+                for j in range(i + 1, len(true_devices)):
+                    c1 = stitched_device_to_cluster.get(true_devices[i])
+                    c2 = stitched_device_to_cluster.get(true_devices[j])
+                    if c1 and c2 and c1 == c2:
+                        together += 1
+            recall_sum += together / n_pairs
+            n_true_clusters += 1
+
+        recall = recall_sum / n_true_clusters if n_true_clusters > 0 else 0.0
+
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if (precision + recall) > 0
+            else 0.0
+        )
 
         return {
-            "device_clusters": final_clusters,
-            "metrics": metrics,
-            "confidence_threshold": self.confidence_threshold,
-            "inferred_user_ids": self.inferred_user_map,
+            "accuracy": round(accuracy, 4),
+            "precision": round(precision, 4),
+            "recall": round(recall, 4),
+            "f1_score": round(f1, 4),
+            "correct_assignments": correct,
+            "total_devices": total,
+            "n_ground_truth_clusters": len(gt_clusters),
+            "n_stitched_clusters": len(stitched_clusters),
+            "n_inferred_user_ids": len(stitched_data.get("inferred_user_ids", {})),
+            "device_results": device_results,
         }
 
     # ------------------------------------------------------------------ #
@@ -208,7 +404,9 @@ class GraphStitcher:
     #  Layer 3: Interaction graph construction                           #
     # ------------------------------------------------------------------ #
 
-    def build_interaction_graphs(self, events: List[Dict]) -> Dict[str, Any]:
+    def build_interaction_graphs(
+        self, events: List[Dict], edge_buffer_path: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Build temporal interaction graphs between events for each user.
 
         Creates a graph per user where:
@@ -216,11 +414,23 @@ class GraphStitcher:
         - Edges connect events that occur within a 5-minute sliding window
         - Edge weights represent temporal proximity (closer = stronger)
 
+        Uses an O(n × w) sliding-window algorithm (deque-based) instead of
+        O(n²) nested loops to avoid memory blowup with large event volumes.
+
+        To avoid holding all edges in RAM, edges are streamed to a temporary
+        JSONL file on disk (one JSON object per edge). The returned dict
+        contains only metrics and a reference to the edge buffer file path.
+
+        Args:
+            events: List of anonymized event dicts.
+            edge_buffer_path: Optional path for the edge buffer file. If None,
+                a temporary file is created automatically.
+
         Returns:
             Dict with:
-              - "graphs": Dict[user_id, List[Dict]] - edge list per user
+              - "edge_buffer_path": Path to the edge buffer JSONL file
               - "metrics": Dict of graph-level statistics
-              - "graphml_path": Path to exported GraphML file (if exported)
+              - "user_meta": Dict[user_id, {n_events, n_edges, services}]
         """
         # Group events by user_id (using inferred user_ids where available)
         user_events = defaultdict(list)
@@ -232,69 +442,91 @@ class GraphStitcher:
                 uid = self.inferred_user_map.get(str(eid), "unidentified")
             user_events[uid].append(event)
 
-        graphs = {}
+        # Open edge buffer file for streaming writes
+        if edge_buffer_path is None:
+            fd, edge_buffer_path = tempfile.mkstemp(
+                suffix=".jsonl", prefix="interaction_edges_"
+            )
+            os.close(fd)
+
+        user_meta: Dict[str, Dict] = {}
         total_nodes = 0
         total_edges = 0
 
-        for uid, ue in tqdm(
-            user_events.items(), desc="  [5b] Building interaction graphs", leave=False
-        ):
-            # Sort by timestamp
-            ue_sorted = sorted(
-                ue,
-                key=lambda e: (
-                    self._parse_timestamp(e.get("timestamp", "")) or datetime.min
-                ),
-            )
+        with open(edge_buffer_path, "w") as edge_buf:
+            for uid, ue in tqdm(
+                user_events.items(),
+                desc="  [5b] Building interaction graphs",
+                leave=False,
+            ):
+                # Sort by timestamp
+                ue_sorted = sorted(
+                    ue,
+                    key=lambda e: (
+                        self._parse_timestamp(e.get("timestamp", "")) or datetime.min
+                    ),
+                )
 
-            # Build edges within 5-minute sliding window
-            edges = []
-            for i, e1 in enumerate(ue_sorted):
-                t1 = self._parse_timestamp(e1.get("timestamp", ""))
-                if not t1:
-                    continue
-                for j in range(i + 1, len(ue_sorted)):
-                    e2 = ue_sorted[j]
-                    t2 = self._parse_timestamp(e2.get("timestamp", ""))
-                    if not t2:
-                        continue
-                    time_diff = abs((t2 - t1).total_seconds())
-                    if time_diff > 300:  # 5 minutes
-                        # Since sorted, break if gap exceeds window
-                        if time_diff > 600:  # 10 min buffer for sparse events
-                            break
+                # Build edges using a sliding window (deque) — O(n × w) instead of O(n²)
+                # The window holds (timestamp, event) pairs within a 5-minute horizon.
+                n_edges_for_user = 0
+                window: deque = deque()
+
+                for event in ue_sorted:
+                    t = self._parse_timestamp(event.get("timestamp", ""))
+                    if not t:
                         continue
 
-                    # Edge weight: temporal proximity
-                    weight = max(0.01, 1.0 - time_diff / 300.0)
+                    # Evict events older than 5 minutes from the window
+                    while window and (t - window[0][0]).total_seconds() > 300:
+                        window.popleft()
 
-                    # Boost weight if same service
-                    if e1.get("service") == e2.get("service"):
-                        weight = min(1.0, weight * 1.5)
+                    # Compare the new event against all events currently in the window
+                    for w_ts, w_event in window:
+                        time_diff = abs((t - w_ts).total_seconds())
+                        # time_diff is guaranteed ≤ 300 by the eviction logic above,
+                        # but clamp for numerical safety
+                        if time_diff > 300:
+                            continue
 
-                    edges.append(
-                        {
-                            "source": e1.get("event_id"),
-                            "target": e2.get("event_id"),
-                            "weight": round(weight, 4),
-                            "time_diff_seconds": time_diff,
-                            "source_service": e1.get("service"),
-                            "target_service": e2.get("service"),
-                            "source_event_type": e1.get("event_type"),
-                            "target_event_type": e2.get("event_type"),
-                        }
-                    )
+                        # Edge weight: temporal proximity
+                        weight = max(0.01, 1.0 - time_diff / 300.0)
 
-            graphs[uid] = {
-                "n_events": len(ue_sorted),
-                "n_edges": len(edges),
-                "edges": edges,
-                "services": list(
-                    set(e.get("service") for e in ue_sorted if e.get("service"))
-                ),
-            }
-            total_nodes += len(ue_sorted)
-            total_edges += len(edges)
+                        # Boost weight if same service
+                        if event.get("service") == w_event.get("service"):
+                            weight = min(1.0, weight * 1.5)
+
+                        # Write edge directly to buffer file — one JSON object per line
+                        edge_buf.write(
+                            json.dumps(
+                                {
+                                    "user_id": uid,
+                                    "source": w_event.get("event_id"),
+                                    "target": event.get("event_id"),
+                                    "weight": round(weight, 4),
+                                    "time_diff_seconds": time_diff,
+                                    "source_service": w_event.get("service"),
+                                    "target_service": event.get("service"),
+                                    "source_event_type": w_event.get("event_type"),
+                                    "target_event_type": event.get("event_type"),
+                                }
+                            )
+                            + "\n"
+                        )
+                        n_edges_for_user += 1
+
+                    # Add the current event to the window
+                    window.append((t, event))
+
+                user_meta[uid] = {
+                    "n_events": len(ue_sorted),
+                    "n_edges": n_edges_for_user,
+                    "services": list(
+                        set(e.get("service") for e in ue_sorted if e.get("service"))
+                    ),
+                }
+                total_nodes += len(ue_sorted)
+                total_edges += n_edges_for_user
 
         # Compute graph-level metrics
         n_users = len(user_events)
@@ -312,281 +544,65 @@ class GraphStitcher:
         }
 
         return {
-            "graphs": graphs,
+            "edge_buffer_path": edge_buffer_path,
             "metrics": metrics,
+            "user_meta": user_meta,
         }
 
     def export_interaction_graphs(self, graphs_data: Dict, output_path: str):
         """Export interaction graphs as a JSON file with edge lists per user.
 
+        Reads edges from the streaming buffer file (JSONL) and assembles the
+        final JSON output. The buffer file is deleted after successful export.
+
         Args:
-            graphs_data: Output from build_interaction_graphs()
-            output_path: Path to output JSON file
+            graphs_data: Output from build_interaction_graphs() containing
+                ``edge_buffer_path``, ``metrics``, and ``user_meta``.
+            output_path: Path to output JSON file.
         """
+        edge_buffer_path = graphs_data.get("edge_buffer_path")
+        if not edge_buffer_path or not os.path.exists(edge_buffer_path):
+            raise FileNotFoundError(
+                f"Edge buffer file not found: {edge_buffer_path}. "
+                "Ensure build_interaction_graphs() was called first."
+            )
+
+        # Group edges by user_id while reading from the buffer
+        user_edges: Dict[str, List[Dict]] = defaultdict(list)
+        with open(edge_buffer_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                edge = json.loads(line)
+                uid = edge.pop("user_id")
+                user_edges[uid].append(edge)
+
+        # Assemble the export structure
+        user_meta = graphs_data.get("user_meta", {})
         export = {
             "metrics": graphs_data["metrics"],
             "users": {},
         }
 
-        for uid, graph in graphs_data["graphs"].items():
+        for uid, edges in user_edges.items():
+            meta = user_meta.get(uid, {})
             export["users"][uid] = {
-                "n_events": graph["n_events"],
-                "n_edges": graph["n_edges"],
-                "services": graph["services"],
-                "edges": graph["edges"],
+                "n_events": meta.get("n_events", 0),
+                "n_edges": meta.get("n_edges", len(edges)),
+                "services": meta.get("services", []),
+                "edges": edges,
             }
 
+        # Write final output
         with open(output_path, "w") as f:
             json.dump(export, f, indent=2)
 
-    def _extract_explicit_links(self, events: List[Dict]) -> Dict[str, str]:
-        """Extract 100% confident linkages from login events."""
-        links = {}
-        for event in events:
-            if event.get("event_type") == "login":
-                device_id = event.get("device_id")
-                user_id = event.get("user_id")
-                if device_id and user_id:
-                    links[device_id] = user_id
-        return links
-
-    def _ip_based_matching(self, events: List[Dict]) -> Dict[Tuple[str, str], float]:
-        """Match devices by IP similarity."""
-        links = {}
-        ip_events = defaultdict(list)
-
-        # Group by IP
-        for event in events:
-            ip = event.get("ip_address")
-            if ip:
-                ip_events[ip].append(event)
-
-        for ip, group in tqdm(
-            ip_events.items(), desc="    [5a.1] IP matching", leave=False
-        ):
-            devices = set(e.get("device_id") for e in group if e.get("device_id"))
-            device_list = list(devices)
-
-            for i, dev1 in enumerate(device_list):
-                for dev2 in device_list[i + 1 :]:
-                    time_diff = self._compute_time_diff(
-                        [e for e in group if e.get("device_id") == dev1],
-                        [e for e in group if e.get("device_id") == dev2],
-                    )
-
-                    if time_diff < 3600:  # 1 hour
-                        confidence = 0.7
-                        if self._ip_subnet_similarity(dev1, dev2, events) > 0.5:
-                            confidence += 0.1
-                        links[(dev1, dev2)] = min(confidence, 0.95)
-
-        return links
-
-    def _ip_subnet_similarity(self, dev1: str, dev2: str, events: List[Dict]) -> float:
-        """Compute similarity based on IP subnet patterns."""
-        ips1 = set()
-        ips2 = set()
-
-        for event in events:
-            if event.get("device_id") == dev1 and event.get("ip_address"):
-                ips1.add(event["ip_address"])
-            if event.get("device_id") == dev2 and event.get("ip_address"):
-                ips2.add(event["ip_address"])
-
-        if not ips1 or not ips2:
-            return 0.0
-
-        # Extract subnets (first two octets)
-        subnets1 = set(ip.rsplit(".", 2)[0] for ip in ips1 if ip.count(".") >= 2)
-        subnets2 = set(ip.rsplit(".", 2)[0] for ip in ips2 if ip.count(".") >= 2)
-
-        overlap = len(subnets1 & subnets2)
-        union = len(subnets1 | subnets2)
-
-        return overlap / union if union > 0 else 0.0
-
-    def _gps_based_matching(self, events: List[Dict]) -> Dict[Tuple[str, str], float]:
-        """Match devices by GPS proximity."""
-        links = {}
-        gps_events = [
-            e
-            for e in events
-            if e.get("event_type") in ["gps_update", "wifi_connection"]
-        ]
-
-        if not gps_events:
-            return links
-
-        device_coords = defaultdict(list)
-        for event in gps_events:
-            device = event.get("device_id")
-            if device and "latitude" in event and "longitude" in event:
-                device_coords[device].append((event["latitude"], event["longitude"]))
-
-        devices = list(device_coords.keys())
-
-        for i, dev1 in enumerate(
-            tqdm(devices, desc="    [5a.2] GPS matching", leave=False)
-        ):
-            for dev2 in devices[i + 1 :]:
-                coords1 = device_coords[dev1]
-                coords2 = device_coords[dev2]
-
-                if coords1 and coords2:
-                    # Compute minimum distance
-                    min_dist = float("inf")
-                    for lat1, lon1 in coords1:
-                        for lat2, lon2 in coords2:
-                            dist = self._haversine_distance(lat1, lon1, lat2, lon2)
-                            min_dist = min(min_dist, dist)
-
-                    # Confidence based on distance
-                    if min_dist < 50:
-                        confidence = 0.8
-                    elif min_dist < 100:
-                        confidence = 0.6
-                    elif min_dist < 200:
-                        confidence = 0.4
-                    else:
-                        confidence = 0.0
-
-                    if confidence > 0:
-                        links[(dev1, dev2)] = confidence
-
-        return links
-
-    def _haversine_distance(
-        self, lat1: float, lon1: float, lat2: float, lon2: float
-    ) -> float:
-        """Calculate great-circle distance in meters."""
-        R = 6371000  # Earth radius in meters
-
-        lat1_rad = math.radians(lat1)
-        lon1_rad = math.radians(lon1)
-        lat2_rad = math.radians(lat2)
-        lon2_rad = math.radians(lon2)
-
-        dlat = lat2_rad - lat1_rad
-        dlon = lon2_rad - lon1_rad
-
-        a = (
-            math.sin(dlat / 2) ** 2
-            + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
-        )
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-        return R * c
-
-    def _behavioral_fingerprinting(
-        self, events: List[Dict]
-    ) -> Dict[Tuple[str, str], float]:
-        """Match devices by behavior similarity."""
-        links = {}
-        behaviors = defaultdict(lambda: {"categories": [], "times": []})
-
-        for event in events:
-            device = event.get("device_id")
-            if device:
-                if "category" in event:
-                    behaviors[device]["categories"].append(event["category"])
-                if "timestamp" in event:
-                    hour = int(event["timestamp"].split("T")[1].split(":")[0])
-                    behaviors[device]["times"].append(hour)
-
-        devices = list(behaviors.keys())
-        for i, dev1 in enumerate(
-            tqdm(devices, desc="    [5a.3] Behavior matching", leave=False)
-        ):
-            for dev2 in devices[i + 1 :]:
-                # Jaccard similarity on categories
-                cats1 = set(behaviors[dev1]["categories"])
-                cats2 = set(behaviors[dev2]["categories"])
-
-                if cats1 and cats2:
-                    overlap = len(cats1 & cats2)
-                    union = len(cats1 | cats2)
-                    similarity = overlap / union if union > 0 else 0
-
-                    if similarity > 0.4:
-                        links[(dev1, dev2)] = 0.5 * similarity
-
-        return links
-
-    def _build_combined_graph(
-        self, ip_links: Dict, gps_links: Dict, behavior_links: Dict
-    ):
-        """Build combined graph from all evidence sources."""
-        self.combined_graph = nx.Graph()
-
-        # Add IP links
-        for (dev1, dev2), conf in ip_links.items():
-            if conf >= self.confidence_threshold:
-                self.combined_graph.add_edge(dev1, dev2, weight=conf, source="ip")
-
-        # Add GPS links
-        for (dev1, dev2), conf in gps_links.items():
-            if conf >= self.confidence_threshold:
-                self.combined_graph.add_edge(dev1, dev2, weight=conf, source="gps")
-
-        # Add behavior links
-        for (dev1, dev2), conf in behavior_links.items():
-            if conf >= self.confidence_threshold:
-                self.combined_graph.add_edge(dev1, dev2, weight=conf, source="behavior")
-
-    def _apply_community_detection(self, explicit_links: Dict) -> Dict[str, List[str]]:
-        """Apply community detection to resolve clusters."""
-        # Start with explicit links
-        clusters = {}
-
-        # Add explicit links first
-        for device, user in explicit_links.items():
-            if user not in clusters:
-                clusters[user] = []
-            clusters[user].append(device)
-
-        # Apply connected components on combined graph
-        if self.combined_graph.nodes():
-            components = list(nx.connected_components(self.combined_graph))
-
-            # Merge components with existing clusters
-            for comp in components:
-                if len(comp) > 1:
-                    # Check if any device already in a cluster
-                    existing_cluster = None
-                    for device in comp:
-                        for cluster_id, devices in clusters.items():
-                            if device in devices:
-                                existing_cluster = cluster_id
-                                break
-                        if existing_cluster:
-                            break
-
-                    if existing_cluster:
-                        # Add all devices to existing cluster
-                        clusters[existing_cluster].extend(list(comp))
-                    else:
-                        # Create new cluster
-                        cluster_id = f"cluster_{len(clusters)}"
-                        clusters[cluster_id] = list(comp)
-
-        return clusters
-
-    def _compute_time_diff(self, events1: List[Dict], events2: List[Dict]) -> float:
-        """Compute minimum time difference between event groups."""
-        if not events1 or not events2:
-            return float("inf")
-
-        times1 = [self._parse_timestamp(e.get("timestamp", "")) for e in events1]
-        times2 = [self._parse_timestamp(e.get("timestamp", "")) for e in events2]
-
-        min_diff = float("inf")
-        for t1 in times1:
-            for t2 in times2:
-                if t1 and t2:
-                    diff = abs((t2 - t1).total_seconds())
-                    min_diff = min(min_diff, diff)
-
-        return min_diff
+        # Clean up the temporary buffer file
+        try:
+            os.remove(edge_buffer_path)
+        except OSError:
+            pass
 
     def _parse_timestamp(self, ts: str):
         """Parse ISO timestamp."""
@@ -594,20 +610,3 @@ class GraphStitcher:
             return datetime.fromisoformat(ts.replace("Z", "+00:00"))
         except:
             return None
-
-    def _compute_metrics(self, clusters: Dict, events: List[Dict]) -> Dict:
-        """Compute stitching quality metrics."""
-        n_devices = len(set(e.get("device_id") for e in events if e.get("device_id")))
-        n_clusters = len(clusters)
-
-        # Compute cluster sizes
-        cluster_sizes = [len(devices) for devices in clusters.values()]
-
-        return {
-            "n_devices": n_devices,
-            "n_clusters": n_clusters,
-            "avg_cluster_size": np.mean(cluster_sizes) if cluster_sizes else 0,
-            "max_cluster_size": max(cluster_sizes) if cluster_sizes else 0,
-            "min_cluster_size": min(cluster_sizes) if cluster_sizes else 0,
-            "clustering_coefficient": self.clustering_coefficient,
-        }

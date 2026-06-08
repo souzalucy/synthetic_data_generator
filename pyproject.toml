@@ -23,6 +23,8 @@ dependencies = [
     "kaleido>=0.2.1",
     "torch>=2.4.0",
     "python-dotenv>=1.0.0",
+    "langchain>=0.3.28",
+    "langchain-community>=0.3.31",
 ]
 
 [project.optional-dependencies]

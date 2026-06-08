@@ -5,6 +5,7 @@ import csv
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 import numpy as np
+import plotly.express as px
 
 
 # ── Color palettes ──────────────────────────────────────────────────────────
@@ -37,6 +38,33 @@ SCENARIO_COLORS = {
     "optimal_treatment": "#AB63FA",
     "confounder_shift": "#FFA15A",
 }
+
+# ── Line style palettes for visual variety ─────────────────────────────────
+
+LINE_DASH_CYCLE = [
+    "solid",
+    "dash",
+    "dot",
+    "dashdot",
+    "longdash",
+    "longdashdot",
+]
+
+MARKER_SYMBOL_CYCLE = [
+    "circle",
+    "square",
+    "diamond",
+    "cross",
+    "x",
+    "triangle-up",
+    "star",
+    "hexagon",
+    "pentagon",
+    "hourglass",
+]
+
+# Extended color cycle for personas beyond the named 5
+_COLOR_CYCLE = px.colors.qualitative.Plotly  # 10 distinct colors
 
 METRIC_LABELS = {
     "total_edges": "Total Edges",
@@ -269,11 +297,14 @@ def extract_most_affected_users(cf_report: Dict) -> List[Dict]:
     return comparison.get("most_affected_users", [])
 
 
-# ── Color helpers ───────────────────────────────────────────────────────────
+# ── Style helpers ───────────────────────────────────────────────────────────
 
 
 def get_persona_color(persona_name: str) -> str:
     """Get a consistent color for a persona name.
+
+    Uses a deterministic hash when the persona is not in the named palette,
+    cycling through Plotly's qualitative palette for unlimited distinct colors.
 
     Args:
         persona_name: Persona display name
@@ -281,7 +312,53 @@ def get_persona_color(persona_name: str) -> str:
     Returns:
         Hex color string
     """
-    return PERSONA_COLORS.get(persona_name, "#999999")
+    if persona_name in PERSONA_COLORS:
+        return PERSONA_COLORS[persona_name]
+    idx = abs(hash(persona_name)) % len(_COLOR_CYCLE)
+    return _COLOR_CYCLE[idx]
+
+
+def get_persona_dash(persona_name: str) -> str:
+    """Get a deterministic dash pattern for a persona line.
+
+    Cycles through a palette of 6 dash styles so that even when many
+    personas share similar colors, their lines remain distinguishable.
+
+    Args:
+        persona_name: Persona display name
+
+    Returns:
+        Plotly dash style string (solid, dash, dot, dashdot, longdash, longdashdot)
+    """
+    idx = abs(hash(persona_name)) % len(LINE_DASH_CYCLE)
+    return LINE_DASH_CYCLE[idx]
+
+
+def get_persona_symbol(persona_name: str) -> str:
+    """Get a deterministic marker symbol for a persona.
+
+    Args:
+        persona_name: Persona display name
+
+    Returns:
+        Plotly marker symbol string
+    """
+    idx = abs(hash(persona_name)) % len(MARKER_SYMBOL_CYCLE)
+    return MARKER_SYMBOL_CYCLE[idx]
+
+
+def get_fill_alpha(persona_name: str, base_alpha: float = 0.2) -> float:
+    """Get a slightly varied fill opacity for a persona's confidence band.
+
+    Args:
+        persona_name: Persona display name
+        base_alpha: Base alpha value (default 0.2)
+
+    Returns:
+        Alpha value between 0.08 and 0.35
+    """
+    variation = (abs(hash(persona_name)) % 5) * 0.05
+    return min(base_alpha + variation, 0.35)
 
 
 def get_service_color(service_name: str) -> str:

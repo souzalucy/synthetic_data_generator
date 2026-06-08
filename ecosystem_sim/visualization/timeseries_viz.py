@@ -20,6 +20,9 @@ from .utils import (
     melt_causal_csv,
     melt_causal_counterfactual_csv,
     get_persona_color,
+    get_persona_dash,
+    get_persona_symbol,
+    get_fill_alpha,
     get_scenario_color,
     ensure_output_dir,
 )
@@ -87,6 +90,8 @@ def plot_causal_trajectories(
     for persona in df_sample["persona"].unique():
         persona_df = df_sample[df_sample["persona"] == persona]
         color = get_persona_color(persona)
+        dash = get_persona_dash(persona)
+        symbol = get_persona_symbol(persona)
 
         # Group by day, compute mean and std for this persona
         agg = persona_df.groupby("day")["affinity"].agg(["mean", "std"]).reset_index()
@@ -95,9 +100,14 @@ def plot_causal_trajectories(
             go.Scatter(
                 x=agg["day"],
                 y=agg["mean"],
-                mode="lines",
+                mode="lines+markers",
                 name=persona,
-                line=dict(color=color, width=2),
+                line=dict(color=color, width=2, dash=dash),
+                marker=dict(
+                    symbol=symbol,
+                    size=5,
+                    color=color,
+                ),
                 legendgroup=persona,
                 showlegend=True,
             ),
@@ -109,6 +119,9 @@ def plot_causal_trajectories(
     for persona in df["persona"].unique():
         persona_df = df[df["persona"] == persona]
         color = get_persona_color(persona)
+        dash = get_persona_dash(persona)
+        symbol = get_persona_symbol(persona)
+        fill_alpha = get_fill_alpha(persona)
         agg = (
             persona_df.groupby("day")["affinity"]
             .agg(["mean", "std", "count"])
@@ -120,9 +133,14 @@ def plot_causal_trajectories(
             go.Scatter(
                 x=agg["day"],
                 y=agg["mean"],
-                mode="lines",
+                mode="lines+markers",
                 name=f"{persona} (mean)",
-                line=dict(color=color, width=3),
+                line=dict(color=color, width=3, dash=dash),
+                marker=dict(
+                    symbol=symbol,
+                    size=6,
+                    color=color,
+                ),
                 legendgroup=persona,
                 showlegend=False,
             ),
@@ -130,13 +148,13 @@ def plot_causal_trajectories(
             col=1,
         )
 
-        # Confidence band
+        # Confidence band with varied fill opacity
         fig.add_trace(
             go.Scatter(
                 x=pd.concat([agg["day"], agg["day"][::-1]]),
                 y=pd.concat([agg["mean"] + agg["ci"], (agg["mean"] - agg["ci"])[::-1]]),
                 fill="toself",
-                fillcolor=_hex_to_rgba(color, 0.2),
+                fillcolor=_hex_to_rgba(color, fill_alpha),
                 line=dict(color="rgba(255,255,255,0)"),
                 name=f"{persona} (95% CI)",
                 legendgroup=persona,
@@ -219,21 +237,32 @@ def plot_persona_trajectories(
         horizontal_spacing=0.05,
     )
 
+    # Pool of dash patterns for individual user lines
+    _user_dash_pool = ["solid", "dot", "dash", "dashdot"]
+
     for idx, persona in enumerate(personas):
         row = idx // n_cols + 1
         col = idx % n_cols + 1
         persona_df = df[df["persona"] == persona]
         color = get_persona_color(persona)
+        dash = get_persona_dash(persona)
+        symbol = get_persona_symbol(persona)
 
-        # Plot individual user lines (thin, low opacity)
-        for uid in persona_df["user_id"].unique()[:20]:  # Max 20 per persona
+        # Plot individual user lines (thin, low opacity, varied dashes)
+        for j, uid in enumerate(
+            persona_df["user_id"].unique()[:20]
+        ):  # Max 20 per persona
             user_df = persona_df[persona_df["user_id"] == uid]
             fig.add_trace(
                 go.Scatter(
                     x=user_df["day"],
                     y=user_df["affinity"],
                     mode="lines",
-                    line=dict(color=color, width=0.5),
+                    line=dict(
+                        color=color,
+                        width=0.5,
+                        dash=_user_dash_pool[j % len(_user_dash_pool)],
+                    ),
                     opacity=0.3,
                     name=uid,
                     showlegend=False,
@@ -243,14 +272,19 @@ def plot_persona_trajectories(
                 col=col,
             )
 
-        # Mean line (bold)
+        # Mean line (bold, with dash and marker)
         agg = persona_df.groupby("day")["affinity"].mean().reset_index()
         fig.add_trace(
             go.Scatter(
                 x=agg["day"],
                 y=agg["affinity"],
-                mode="lines",
-                line=dict(color=color, width=3),
+                mode="lines+markers",
+                line=dict(color=color, width=3, dash=dash),
+                marker=dict(
+                    symbol=symbol,
+                    size=6,
+                    color=color,
+                ),
                 name=f"{persona} (mean)",
                 showlegend=False,
             ),
@@ -543,8 +577,12 @@ def plot_interest_heatmap(
     """Plot a heatmap of average interest across days and categories.
 
     Args:
-        interest_matrix: Optional numpy array (n_users, n_days, n_categories)
-        ground_truth_path: Optional path to ground_truth.json (loaded if no matrix)
+        interest_matrix: Optional numpy array (n_users, n_days, n_categories).
+            If a list is passed (e.g. from JSON deserialization), it is
+            converted to ndarray automatically.
+        ground_truth_path: Optional path to ground_truth.json. When
+            *interest_matrix* is None, the function reconstructs a synthetic
+            matrix matching the simulation statistics stored in the JSON.
         output_dir: Output directory for HTML file
 
     Returns:
@@ -552,18 +590,23 @@ def plot_interest_heatmap(
     """
     viz_dir = ensure_output_dir(output_dir, "timeseries")
 
+    # Guard: convert list → ndarray if needed (JSON deserialization returns lists)
+    if interest_matrix is not None and not isinstance(interest_matrix, np.ndarray):
+        interest_matrix = np.asarray(interest_matrix, dtype=np.float64)
+
     if interest_matrix is None and ground_truth_path:
-        # Try to reconstruct from ground truth (limited info)
+        # Reconstruct synthetic matrix from ground-truth summary statistics
         gt = load_json(ground_truth_path)
         if gt:
             stats = gt.get("statistics", {})
-            config = gt.get("config", {})
-            n_days = config.get("n_days", 30)
-            n_cats = config.get("n_categories", 10)
+            cfg = gt.get("config", {})
+            n_users = cfg.get("n_users", 100)
+            n_days = cfg.get("n_days", 30)
+            n_cats = cfg.get("n_categories", 10)
             mean_val = stats.get("mean_interest", 0.5)
             std_val = stats.get("std_interest", 0.1)
-            # Generate synthetic matrix matching statistics for visualization
-            interest_matrix = np.random.normal(mean_val, std_val, (10, n_days, n_cats))
+            rng = np.random.default_rng(42)
+            interest_matrix = rng.normal(mean_val, std_val, (n_users, n_days, n_cats))
             interest_matrix = np.clip(interest_matrix, 0, 1)
 
     if interest_matrix is None:
@@ -573,8 +616,8 @@ def plot_interest_heatmap(
         fig.write_html(str(filepath))
         return str(filepath)
 
-    # Average across users
-    avg_interest = interest_matrix.mean(axis=0)  # (n_days, n_categories)
+    # Average across users → (n_days, n_categories)
+    avg_interest = interest_matrix.mean(axis=0)
 
     fig = px.imshow(
         avg_interest.T,
@@ -741,22 +784,17 @@ def plot_counterfactual_table(
         Path to generated HTML file
     """
     viz_dir = ensure_output_dir(output_dir, "timeseries")
-    csv_rows = load_csv_to_dicts(csv_path)
+    filepath = viz_dir / "counterfactual_table.html"
 
+    # ── Guard: no CSV file ──
+    csv_rows = load_csv_to_dicts(csv_path)
     if not csv_rows:
         fig = go.Figure()
         fig.update_layout(title="No Counterfactual Table Data Available")
-        filepath = viz_dir / "counterfactual_table.html"
         fig.write_html(str(filepath))
         return str(filepath)
 
-    # Limit users
-    if len(csv_rows) > max_users:
-        rng = np.random.default_rng(42)
-        indices = rng.choice(len(csv_rows), max_users, replace=False)
-        csv_rows = [csv_rows[i] for i in indices]
-
-    # Determine which day columns exist
+    # ── Guard: missing expected columns ──
     all_keys = list(csv_rows[0].keys())
     factual_keys = sorted(
         [k for k in all_keys if k.endswith("_base_affinity_factual")],
@@ -766,6 +804,35 @@ def plot_counterfactual_table(
         [k for k in all_keys if k.endswith("_base_affinity_counterfactual")],
         key=lambda x: int(x.split("_")[1]),
     )
+    if not factual_keys or not counterfactual_keys:
+        print(
+            f"  [WARN] Counterfactual table: no day columns found. "
+            f"Expected suffixes '_base_affinity_factual' / '_base_affinity_counterfactual'. "
+            f"Available keys: {list(all_keys)[:10]}..."
+        )
+        fig = go.Figure()
+        fig.update_layout(
+            title="Counterfactual Table: Required Columns Not Found in CSV"
+        )
+        fig.write_html(str(filepath))
+        return str(filepath)
+
+    # ── Guard: mismatched key counts ──
+    if len(factual_keys) != len(counterfactual_keys):
+        print(
+            f"  [WARN] Counterfactual table: mismatched column counts "
+            f"(factual={len(factual_keys)}, counterfactual={len(counterfactual_keys)}). "
+            f"Truncating to shorter list."
+        )
+        n = min(len(factual_keys), len(counterfactual_keys))
+        factual_keys = factual_keys[:n]
+        counterfactual_keys = counterfactual_keys[:n]
+
+    # Limit users
+    if len(csv_rows) > max_users:
+        rng = np.random.default_rng(42)
+        indices = rng.choice(len(csv_rows), max_users, replace=False)
+        csv_rows = [csv_rows[i] for i in indices]
 
     # Sample days if requested
     if sample_days is not None:
@@ -788,14 +855,18 @@ def plot_counterfactual_table(
     cell_colors = {h: [] for h in headers}
 
     for row in csv_rows:
-        cell_values["user_id"].append(row["user_id"])
-        cell_values["persona"].append(row["persona"])
+        cell_values["user_id"].append(row.get("user_id", "?"))
+        cell_values["persona"].append(row.get("persona", "?"))
         cell_values["intervention_type"].append(row.get("intervention_type", ""))
         cell_values["intervention_value"].append(row.get("intervention_value", ""))
 
         for fk, cfk, day_num in zip(factual_keys, counterfactual_keys, day_labels):
-            f_val = float(row.get(fk, 0))
-            cf_val = float(row.get(cfk, 0))
+            try:
+                f_val = float(row.get(fk, 0))
+                cf_val = float(row.get(cfk, 0))
+            except (ValueError, TypeError):
+                f_val = 0.0
+                cf_val = 0.0
             delta = cf_val - f_val
 
             # Factual cell
@@ -855,8 +926,10 @@ def plot_counterfactual_table(
         margin=dict(l=10, r=10, t=60, b=10),
     )
 
-    filepath = viz_dir / "counterfactual_table.html"
     fig.write_html(str(filepath))
+    print(
+        f"  * Counterfactual table written to {filepath} ({len(csv_rows)} users, {len(day_labels)} days)"
+    )
 
     if explainer:
         html = Path(filepath).read_text(encoding="utf-8")

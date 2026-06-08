@@ -789,8 +789,14 @@ class CausalEngine:
 
         Args:
             filepath: Output file path
-            interest_matrix: Interest trajectory matrix
+            interest_matrix: Interest trajectory matrix of shape
+                (n_users, n_days, n_categories)
         """
+        # Store the full 3-D interest matrix as a nested list so that
+        # downstream consumers (e.g. plot_interest_heatmap) can average
+        # over any axis they need.
+        interest_matrix_3d = interest_matrix.tolist()  # (n_users, n_days, n_categories)
+
         ground_truth = {
             "config": {
                 "n_users": self.n_users,
@@ -816,6 +822,7 @@ class CausalEngine:
                 "mean_treatment": float(self.treatment_matrix.mean()),
                 "std_treatment": float(self.treatment_matrix.std()),
             },
+            "interest_matrix": interest_matrix_3d,
         }
 
         with open(filepath, "w") as f:

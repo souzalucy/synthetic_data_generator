@@ -63,3 +63,21 @@ ecosystem_sim/
 ## Documentation
 
 See `plans/complete_implementation_plan.md` for detailed specifications.
+
+
+
+
+# Basic: override users, days, and seed
+uv run -m ecosystem_sim.main --n-users 500 --days 60 --seed 123
+
+# Increase personas and sectors
+uv run -m ecosystem_sim.main --n-personas 12 --n-sectors 10
+
+# Full customization
+uv run -m ecosystem_sim.main --n-users 1000 --days 90 --n-personas 8 \
+  --categories 15 --treatment-range 0.05 0.25 --persistence 0.8 \
+  --campaign-day 30 --confidence-threshold 0.85 \
+  --no-counterfactuals --disable-email --search-rate 0.8
+
+# Disable SCM and visualization
+uv runuv run -m ecosystem_sim.main --no-scm --no-viz

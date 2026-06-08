@@ -49,18 +49,23 @@ causal:
 # Controls the random causal structure governing user trajectories.
 # The structure is sampled per simulation or per user, creating
 # realistic variability in the data-generating process.
-# Available structures: none, direct, chain, confounder
+# Available structures: direct, chain, confounder
 aleatory_causal:
   enabled: true
-  available_structures: [none, direct, chain, confounder]
-  structure_probs: [0.1, 0.3, 0.3, 0.3]
-  randomize_per: simulation
-  direct_effect_range: [0.1, 0.5]
-  chain_confounder_effect_range: [0.2, 0.6]
-  chain_treatment_effect_range: [0.1, 0.4]
-  confounder_effect_on_treatment: [0.3, 0.7]
-  confounder_effect_on_outcome: [0.2, 0.5]
+  available_structures: [direct, chain, confounder]
+  structure_probs: [0.33, 0.33, 0.34]
+  randomize_per: user
+  persistence_factor_range: [0.6, 0.9]
   noise_std_range: [0.02, 0.10]
+  # Direct: T → Y
+  direct_treatment_effect_range: [0.1, 0.5]
+  # Chain (Mediation): T → X → Y
+  chain_tx_effect_range: [0.2, 0.6]
+  chain_xy_effect_range: [0.1, 0.4]
+  # Confounder: X → T, X → Y
+  confounder_xt_effect_range: [0.3, 0.7]
+  confounder_xy_effect_range: [0.2, 0.5]
+  confounder_ty_effect_range: [0.1, 0.4]
   counterfactual:
     enabled: true
     default_intervention_type: pointwise
@@ -129,7 +134,7 @@ intelligence:
   #   DEEPSEEK_API_KEY=sk-your-key-here
   explanation_agent:
     enabled: true
-    mode: "template"           # "template" (no deps) or "llm" (requires langchain + deepseek)
+    mode: "llm"           # "template" (no deps) or "llm" (requires langchain + deepseek)
     model: "deepseek-chat"     # DeepSeek model name
     temperature: 0.3           # LLM temperature (0.0 = deterministic, 1.0 = creative)
     max_explanations: 50       # Max explanations per run (avoids excessive API calls)

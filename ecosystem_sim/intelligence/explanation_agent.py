@@ -469,16 +469,59 @@ class VisualizationExplainer:
                 "Using template-based explanations."
             )
 
-    def _init_langchain(self):
-        """Attempt to initialize LangChain with DeepSeek."""
-        try:
-            from langchain.chat_models import ChatDeepSeek
-            from langchain.prompts import PromptTemplate
+    @staticmethod
+    def inject_explanation_button(
+        html: str, explanation: str, title: str = "Explanation"
+    ) -> str:
+        """Inject an expandable explanation button into a Plotly HTML page.
 
-            self._llm = ChatDeepSeek(
+        Args:
+            html: The raw HTML content of the Plotly figure.
+            explanation: The explanation text to inject.
+            title: The title for the explanation section.
+
+        Returns:
+            Modified HTML with the explanation button injected.
+        """
+        button_html = f"""
+        <div style="text-align:center; margin:10px 0;">
+            <button onclick="toggleExplanation()"
+                    style="background:#636EFA;color:white;border:none;
+                           padding:8px 20px;border-radius:5px;cursor:pointer;
+                           font-size:14px;">
+                📊 {title}
+            </button>
+        </div>
+        <div id="explanation-box"
+             style="display:none; margin:10px 20px; padding:15px;
+                    background:#f8f9fa; border-left:4px solid #636EFA;
+                    border-radius:4px; font-family:sans-serif; font-size:14px;
+                    line-height:1.6;">
+            {explanation}
+        </div>
+        <script>
+        function toggleExplanation() {{
+            var box = document.getElementById('explanation-box');
+            box.style.display = box.style.display === 'none' ? 'block' : 'none';
+        }}
+        </script>
+        """
+        # Insert before the closing </body> tag, or append if not found
+        if "</body>" in html:
+            return html.replace("</body>", button_html + "\n</body>")
+        return html + button_html
+
+    def _init_langchain(self):
+        """Attempt to initialize LangChain with DeepSeek (OpenAI-compatible)."""
+        try:
+            from langchain_openai import ChatOpenAI
+            from langchain_core.prompts import PromptTemplate
+
+            self._llm = ChatOpenAI(
                 model=self._model,
                 api_key=self._api_key,
                 temperature=self._temperature,
+                base_url="https://api.deepseek.com/v1",
             )
             self._PromptTemplate = PromptTemplate
             self._langchain_available = True
@@ -486,7 +529,7 @@ class VisualizationExplainer:
         except ImportError:
             print(
                 "  [EXPLAIN] LangChain not installed. "
-                "Install with: pip install langchain langchain-community"
+                "Install with: pip install langchain langchain-community langchain-openai"
             )
         except Exception as exc:
             print(f"  [EXPLAIN] Failed to initialize LangChain: {exc}")

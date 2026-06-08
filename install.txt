@@ -1,0 +1,16 @@
+pip install torch --index-url https://download.pytorch.org/whl/rocm6.0
+pip install langchain langchain-community langchain-openai
+# Basic: override users, days, and seed
+python -m ecosystem_sim.main --n-users 50 --days 30 --seed 13
+
+# Increase personas and sectors
+python -m ecosystem_sim.main --n-personas 12 --n-sectors 10
+
+# Full customization
+python -m ecosystem_sim.main --n-users 1000 --days 90 --n-personas 8 \
+  --categories 15 --treatment-range 0.05 0.25 --persistence 0.8 \
+  --campaign-day 30 --confidence-threshold 0.85 \
+  --no-counterfactuals --disable-email --search-rate 0.8
+
+# Disable SCM and visualization
+python -m ecosystem_sim.main --no-scm --no-viz
