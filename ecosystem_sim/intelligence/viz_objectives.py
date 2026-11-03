@@ -10,7 +10,7 @@ This module is the single source of truth for what each chart type
 is trying to communicate, decoupled from the explanation generation logic.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 # ---------------------------------------------------------------------------
 # Registry
@@ -29,10 +29,10 @@ VIZ_OBJECTIVES["lift_deciles"] = {
         "low-uplift or negative-uplift segments to maximise ROI."
     ),
     "key_questions": [
-        "What is the uplift range across deciles (min → max)?",
+        "What is the uplift range across deciles (min -> max)?",
         "Which deciles show positive vs negative average uplift?",
         "How much of the total uplift is concentrated in the top 3 deciles?",
-        "Is there a clear monotonic trend (higher decile → higher uplift)?",
+        "Is there a clear monotonic trend (higher decile -> higher uplift)?",
     ],
     "interpretation_rules": {
         "positive_uplift_deciles": ("Deciles with avg_uplift > 0 are worth targeting."),
@@ -66,7 +66,7 @@ VIZ_OBJECTIVES["qini_curve"] = {
             "Qini between 0.05 and 0.15 indicates moderate discriminatory power."
         ),
         "qini_weak": (
-            "Qini < 0.05 indicates weak discriminatory power — "
+            "Qini < 0.05 indicates weak discriminatory power - "
             "the model adds little value over random targeting."
         ),
     },
@@ -404,7 +404,7 @@ VIZ_OBJECTIVES["treatment_matrix"] = {
 
 
 VIZ_OBJECTIVES["interest_heatmap"] = {
-    "title": "Average Interest: Days × Categories",
+    "title": "Average Interest: Days x Categories",
     "objective": (
         "Reveal temporal and categorical patterns in user interest, "
         "showing how average interest evolves across days and content "
@@ -413,7 +413,7 @@ VIZ_OBJECTIVES["interest_heatmap"] = {
     "key_questions": [
         "Which categories have the highest average interest?",
         "Are there temporal trends (increasing/decreasing over days)?",
-        "Are there category × day interaction patterns?",
+        "Are there category x day interaction patterns?",
         "What is the overall mean interest level?",
     ],
     "interpretation_rules": {
@@ -422,7 +422,7 @@ VIZ_OBJECTIVES["interest_heatmap"] = {
             "sustained high interest over time."
         ),
         "vertical_patterns": (
-            "Vertical gradients reveal temporal trends — "
+            "Vertical gradients reveal temporal trends - "
             "warming colours over time indicate growing interest."
         ),
         "horizontal_patterns": (

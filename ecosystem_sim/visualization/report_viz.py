@@ -5,7 +5,7 @@ Generates comprehensive HTML dashboards with tables, gauges, and annotated chart
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -21,7 +21,6 @@ from .utils import (
     extract_scenario_metrics,
     extract_deltas,
     extract_causal_pathways,
-    extract_most_affected_users,
 )
 from ecosystem_sim.intelligence.explanation_agent import VisualizationExplainer
 
@@ -566,7 +565,7 @@ def render_report_tab(output_dir: str):
     """
     import streamlit as st
 
-    st.header("📋 Report Dashboards")
+    st.header("[report] Report Dashboards")
 
     gt_path = Path(output_dir) / "ground_truth.json"
     cf_path = Path(output_dir) / "counterfactual_graph_report.json"
@@ -577,7 +576,7 @@ def render_report_tab(output_dir: str):
         st.subheader("Ground Truth Summary Dashboard")
         summary_path = Path(output_dir) / "viz/reports/ground_truth_summary.html"
         if summary_path.exists():
-            with open(summary_path) as f:
+            with open(summary_path, encoding="utf-8") as f:
                 st.components.v1.html(f.read(), height=750, scrolling=True)
         elif gt_path.exists():
             st.info("Summary not yet generated. Run visualization phase.")
@@ -588,7 +587,7 @@ def render_report_tab(output_dir: str):
         st.subheader("Counterfactual Analysis Dashboard")
         cf_dash_path = Path(output_dir) / "viz/reports/counterfactual_dashboard.html"
         if cf_dash_path.exists():
-            with open(cf_dash_path) as f:
+            with open(cf_dash_path, encoding="utf-8") as f:
                 st.components.v1.html(f.read(), height=900, scrolling=True)
         else:
             st.info("No counterfactual dashboard available.")
@@ -596,7 +595,7 @@ def render_report_tab(output_dir: str):
         st.subheader("Causal Pathways")
         pathways_path = Path(output_dir) / "viz/reports/causal_pathways.html"
         if pathways_path.exists():
-            with open(pathways_path) as f:
+            with open(pathways_path, encoding="utf-8") as f:
                 st.components.v1.html(f.read(), height=600, scrolling=True)
 
         # Show pathway interpretations as expandable cards

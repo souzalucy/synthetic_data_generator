@@ -107,7 +107,6 @@ class UrbanStream(BaseStream):
         if self.should_generate_event(probabilities.get("poi_checkin", 0.15)):
             events.append(self._create_poi_checkin_event(user, timestamp))
 
-        self.events.extend(events)
         return events
 
     def _create_building_interaction_event(self, user, timestamp: str) -> Dict:

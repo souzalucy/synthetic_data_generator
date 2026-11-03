@@ -3,7 +3,7 @@
 import numpy as np
 from typing import List, Dict, Optional, Tuple
 from .base_stream import BaseStream
-from datetime import datetime, timedelta
+from datetime import datetime
 import random
 import math
 
@@ -397,7 +397,6 @@ class GeoStream(BaseStream):
             )
             events.append(cell_event)
 
-        self.events.extend(events)
         return events
 
     def get_user_location_summary(self, user_id: str) -> Dict:

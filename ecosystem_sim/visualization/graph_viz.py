@@ -4,15 +4,12 @@ and device stitching clusters.
 Uses Plotly for interactive HTML output and NetworkX for graph layout algorithms.
 """
 
-import json
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-from collections import defaultdict
+from typing import Dict, List, Optional
 
 import numpy as np
 import networkx as nx
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 from .utils import (
     load_json,
@@ -28,6 +25,15 @@ from ecosystem_sim.intelligence.explanation_agent import VisualizationExplainer
 
 
 # ── Interaction Graph Visualizations ────────────────────────────────────────
+
+# Edge line width is quantised into this many Plotly traces. One trace per edge
+# is a rendering trap: a dense interaction graph (tens of thousands of edges)
+# produced HTML files of ~90 MB and took minutes to serialise.
+N_EDGE_BUCKETS = 4
+
+# Upper bound on edges drawn per figure (highest-weight edges win). Keeps the
+# exported HTML readable and small on very dense graphs.
+MAX_EDGES_PER_FIGURE = 2000
 
 
 def _build_nx_graph_from_edges(edges: List[Dict]) -> nx.Graph:
@@ -77,32 +83,47 @@ def _create_network_figure(
         )
         return fig
 
-    # Compute layout
-    pos = nx.spring_layout(G, seed=layout_seed, k=0.3)
+    # Compute layout (large graphs get fewer iterations to keep rendering fast)
+    iterations = 50 if G.number_of_nodes() <= 500 else 30
+    pos = nx.spring_layout(G, seed=layout_seed, k=0.3, iterations=iterations)
 
-    # Extract edge traces
-    edge_traces = []
-    edge_weights = [G[u][v].get("weight", 0.5) for u, v in G.edges()]
+    # Extract edge traces -- one trace per line-width bucket, with gaps encoded
+    # as ``None`` so every edge still renders as a separate segment.
+    edge_data = list(G.edges(data=True))
+    edge_weights = [data.get("weight", 0.5) for _, _, data in edge_data]
     max_weight = max(edge_weights) if edge_weights else 1.0
+    max_weight = max_weight or 1.0
 
-    for u, v, data in G.edges(data=True):
+    buckets: Dict[int, Dict[str, list]] = {
+        index: {"x": [], "y": [], "text": []} for index in range(N_EDGE_BUCKETS)
+    }
+    for (u, v, _data), weight in zip(edge_data, edge_weights):
         x0, y0 = pos[u]
         x1, y1 = pos[v]
-        weight = data.get("weight", 0.5)
         # Line width proportional to weight
-        width = max(0.5, weight / max_weight * 4)
+        index = min(int(weight / max_weight * N_EDGE_BUCKETS), N_EDGE_BUCKETS - 1)
+        bucket = buckets[index]
+        bucket["x"].extend((x0, x1, None))
+        bucket["y"].extend((y0, y1, None))
+        label = f"{u} -> {v}<br>Weight: {weight:.3f}"
+        bucket["text"].extend((label, label, None))
 
-        edge_traces.append(
-            go.Scatter(
-                x=[x0, x1, None],
-                y=[y0, y1, None],
-                mode="lines",
-                line=dict(width=width, color="rgba(150,150,150,0.6)"),
-                hoverinfo="text",
-                text=f"{u} → {v}<br>Weight: {weight:.3f}",
-                showlegend=False,
-            )
+    edge_traces = [
+        go.Scatter(
+            x=bucket["x"],
+            y=bucket["y"],
+            mode="lines",
+            line=dict(
+                width=max(0.5, (index + 1) / N_EDGE_BUCKETS * 4),
+                color="rgba(150,150,150,0.6)",
+            ),
+            hoverinfo="text",
+            text=bucket["text"],
+            showlegend=False,
         )
+        for index, bucket in buckets.items()
+        if bucket["x"]
+    ]
 
     # Extract node trace
     node_x = []
@@ -156,6 +177,7 @@ def plot_interaction_graphs(
     output_dir: str,
     max_users: int = 10,
     explainer: Optional["VisualizationExplainer"] = None,
+    max_edges: int = MAX_EDGES_PER_FIGURE,
 ) -> List[str]:
     """Render per-user interaction graphs as Plotly network diagrams.
 
@@ -163,6 +185,7 @@ def plot_interaction_graphs(
         graph_data: Loaded interaction_graphs.json dict
         output_dir: Output directory for HTML files
         max_users: Maximum number of user graphs to render
+        max_edges: Maximum edges drawn per graph (highest weights win)
 
     Returns:
         List of generated HTML file paths
@@ -179,13 +202,25 @@ def plot_interaction_graphs(
     generated_files.append(str(summary_path))
 
     # Generate per-user graphs
-    for i, (uid, graph) in enumerate(users_data.items()):
-        if i >= max_users:
+    rendered = 0
+    for uid, graph in users_data.items():
+        if rendered >= max_users:
             break
+        # ``unidentified`` is an aggregate bucket for events whose user could not
+        # be inferred, not a user graph -- it can hold hundreds of thousands of
+        # edges, so it is not worth rendering.
+        if uid == "unidentified":
+            continue
 
         edges = graph.get("edges", [])
         if not edges:
             continue
+
+        total_edges = graph.get("n_edges", len(edges))
+        if max_edges and len(edges) > max_edges:
+            edges = sorted(
+                edges, key=lambda edge: edge.get("weight", 0.5), reverse=True
+            )[:max_edges]
 
         G = _build_nx_graph_from_edges(edges)
 
@@ -199,10 +234,17 @@ def plot_interaction_graphs(
             if tgt_service:
                 service_map[edge["target"]] = get_service_color(tgt_service)
 
+        shown_edges = len(edges)
+        title = (
+            f"Interaction Graph: User {uid} "
+            f"({graph.get('n_events', 0)} events, {total_edges} edges)"
+        )
+        if shown_edges < total_edges:
+            title += f"<br><sub>top {shown_edges} edges by weight</sub>"
+
         fig = _create_network_figure(
             G,
-            title=f"Interaction Graph: User {uid} "
-            f"({graph.get('n_events', 0)} events, {graph.get('n_edges', 0)} edges)",
+            title=title,
             node_colors=service_map,
             show_labels=False,
         )
@@ -217,7 +259,8 @@ def plot_interaction_graphs(
                     "user_id": uid,
                     "graph": graph,
                     "edges": edges,
-                    "n_edges": len(edges),
+                    "n_edges": total_edges,
+                    "n_edges_shown": shown_edges,
                     "n_events": graph.get("n_events", 0),
                 },
             )
@@ -226,6 +269,7 @@ def plot_interaction_graphs(
             )
             Path(filepath).write_text(html, encoding="utf-8")
         generated_files.append(str(filepath))
+        rendered += 1
 
     return generated_files
 
@@ -573,7 +617,7 @@ def plot_device_stitching_graph(
 
     fig = _create_network_figure(
         G,
-        title=f"Ground-Truth User→Device Mapping ({n_users} users, {n_devices} devices)",
+        title=f"Ground-Truth User->Device Mapping ({n_users} users, {n_devices} devices)",
         node_colors=colors,
         show_labels=False,
         layout_seed=42,
@@ -634,7 +678,7 @@ def render_graph_tab(output_dir: str):
     # Lazy import streamlit only when this function is called
     import streamlit as st
 
-    st.header("📊 Network Graph Visualizations")
+    st.header("[chart] Network Graph Visualizations")
 
     col1, col2 = st.columns(2)
 
@@ -653,7 +697,7 @@ def render_graph_tab(output_dir: str):
                 Path(output_dir) / "viz/graphs/interaction_graphs_summary.html"
             )
             if summary_path.exists():
-                with open(summary_path) as f:
+                with open(summary_path, encoding="utf-8") as f:
                     st.components.v1.html(f.read(), height=500, scrolling=True)
         else:
             st.info("No interaction graphs found. Run simulation first.")
@@ -670,7 +714,7 @@ def render_graph_tab(output_dir: str):
 
             stitch_viz = Path(output_dir) / "viz/stitching/device_stitching.html"
             if stitch_viz.exists():
-                with open(stitch_viz) as f:
+                with open(stitch_viz, encoding="utf-8") as f:
                     st.components.v1.html(f.read(), height=500, scrolling=True)
         else:
             st.info("No stitching data found.")
@@ -681,7 +725,7 @@ def render_graph_tab(output_dir: str):
         data = load_json(str(cf_path))
         deltas_path = Path(output_dir) / "viz/counterfactual/counterfactual_deltas.html"
         if deltas_path.exists():
-            with open(deltas_path) as f:
+            with open(deltas_path, encoding="utf-8") as f:
                 st.components.v1.html(f.read(), height=550, scrolling=True)
 
         # Show causal pathways

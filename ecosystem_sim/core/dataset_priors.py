@@ -1,11 +1,10 @@
 """Extract statistical priors from real datasets for realistic generation."""
 
 import json
-import os
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
@@ -105,7 +104,7 @@ class DatasetPriorExtractor:
             degree_counter: Counter = Counter()
             for ef in edge_files:
                 try:
-                    with open(ef, "r") as f:
+                    with open(ef, "r", encoding="utf-8") as f:
                         for line in f:
                             parts = line.strip().split()
                             if len(parts) >= 2:
@@ -123,7 +122,7 @@ class DatasetPriorExtractor:
                 continue
             degree_counter = Counter()
             try:
-                with open(edge_file, "r") as f:
+                with open(edge_file, "r", encoding="utf-8") as f:
                     for line in f:
                         parts = line.strip().split()
                         if len(parts) >= 2:
@@ -172,15 +171,15 @@ class DatasetPriorExtractor:
 
         emotions: List[str] = []
         if emotions_file.exists():
-            with open(emotions_file, "r") as f:
+            with open(emotions_file, "r", encoding="utf-8") as f:
                 emotions = [line.strip() for line in f if line.strip()]
 
         if ekman_file.exists():
-            with open(ekman_file, "r") as f:
+            with open(ekman_file, "r", encoding="utf-8") as f:
                 result["ekman_mapping"] = json.load(f)
 
         if sentiment_file.exists():
-            with open(sentiment_file, "r") as f:
+            with open(sentiment_file, "r", encoding="utf-8") as f:
                 result["sentiment_mapping"] = json.load(f)
 
         emotion_counts = Counter()
@@ -254,7 +253,7 @@ class DatasetPriorExtractor:
             user_points: List[Tuple[float, float, float, int]] = []
             for plt_file in sorted(traj_dir.glob("*.plt"))[:20]:
                 try:
-                    with open(plt_file, "r") as f:
+                    with open(plt_file, "r", encoding="utf-8") as f:
                         lines = f.readlines()[6:]
                         for line in lines:
                             parts = line.strip().split(",")
@@ -459,7 +458,7 @@ class DatasetPriorExtractor:
             cadences: List[float] = []
             orders_file = inst_dir / "orders.csv"
             if orders_file.exists():
-                with open(orders_file, "r") as f:
+                with open(orders_file, "r", encoding="utf-8") as f:
                     reader = csv.DictReader(f)
                     for row in reader:
                         val = row.get("days_since_prior_order", "")
@@ -487,7 +486,7 @@ class DatasetPriorExtractor:
             for fname in ["order_products__prior.csv", "order_products__train.csv"]:
                 op_file = inst_dir / fname
                 if op_file.exists():
-                    with open(op_file, "r") as f:
+                    with open(op_file, "r", encoding="utf-8") as f:
                         reader = csv.DictReader(f)
                         for row in reader:
                             oid = row.get("order_id", "")
@@ -504,7 +503,7 @@ class DatasetPriorExtractor:
             for fname in ["order_products__prior.csv", "order_products__train.csv"]:
                 op_file = inst_dir / fname
                 if op_file.exists():
-                    with open(op_file, "r") as f:
+                    with open(op_file, "r", encoding="utf-8") as f:
                         reader = csv.DictReader(f)
                         for row in reader:
                             total_items += 1
@@ -520,7 +519,7 @@ class DatasetPriorExtractor:
 
             dept_names: Dict[str, str] = {}
             if depts_file.exists():
-                with open(depts_file, "r") as f:
+                with open(depts_file, "r", encoding="utf-8") as f:
                     reader = csv.DictReader(f)
                     for row in reader:
                         dept_names[row.get("department_id", "")] = row.get(
@@ -528,7 +527,7 @@ class DatasetPriorExtractor:
                         )
 
             if products_file.exists():
-                with open(products_file, "r") as f:
+                with open(products_file, "r", encoding="utf-8") as f:
                     reader = csv.DictReader(f)
                     for row in reader:
                         pid = row.get("product_id", "")
@@ -538,7 +537,7 @@ class DatasetPriorExtractor:
             for fname in ["order_products__prior.csv"]:
                 op_file = inst_dir / fname
                 if op_file.exists():
-                    with open(op_file, "r") as f:
+                    with open(op_file, "r", encoding="utf-8") as f:
                         reader = csv.DictReader(f)
                         for row in reader:
                             pid = row.get("product_id", "")
@@ -689,7 +688,7 @@ class DatasetPriorExtractor:
 
         sender_counts: Counter = Counter()
         try:
-            with open(email_file, "r") as f:
+            with open(email_file, "r", encoding="utf-8") as f:
                 for line in f:
                     if line.startswith("#"):
                         continue
@@ -784,7 +783,7 @@ class DatasetPriorExtractor:
             if not pfile.exists():
                 continue
             try:
-                with open(pfile, "r") as f:
+                with open(pfile, "r", encoding="utf-8") as f:
                     for line in f:
                         parts = line.strip().split("\t")
                         if len(parts) >= 4:
@@ -925,7 +924,7 @@ class DatasetPriorExtractor:
             edges_file = amazon_dir / "Amazon0302.txt"
             if edges_file.exists():
                 edges = []
-                with open(edges_file, "r") as f:
+                with open(edges_file, "r", encoding="utf-8") as f:
                     for line in f:
                         if line.startswith("#"):
                             continue
@@ -1011,7 +1010,7 @@ class DatasetPriorExtractor:
             # Read git_edges.json
             edges_file = github_dir / "git_edges.json"
             if edges_file.exists():
-                with open(edges_file, "r") as f:
+                with open(edges_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
                 if "edges" in data:
@@ -1432,7 +1431,7 @@ class DatasetPriorExtractor:
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(output, "w") as f:
+        with open(output, "w", encoding="utf-8") as f:
             json.dump(self.priors, f, indent=2, default=str)
 
         size_kb = output.stat().st_size / 1024

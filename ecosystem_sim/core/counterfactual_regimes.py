@@ -13,7 +13,6 @@ Three regimes are supported:
 
 from enum import Enum
 from typing import Callable, Dict
-import numpy as np
 
 
 class InterventionRegime(Enum):
@@ -160,7 +159,7 @@ def get_delta_fn(regime: InterventionRegime) -> Callable[..., float]:
     """
     fn = _DELTA_REGIMES.get(regime)
     if fn is None:
-        raise ValueError(f"No δ_t generator registered for regime '{regime.value}'")
+        raise ValueError(f"No delta_t generator registered for regime '{regime.value}'")
     return fn
 
 

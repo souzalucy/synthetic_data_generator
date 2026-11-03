@@ -6,17 +6,12 @@ Provides:
 - `render_dashboard()`: Full-page Streamlit layout with tabs
 """
 
-import json
 import os
 import webbrowser
 from pathlib import Path
 from typing import Dict, Optional
 
-from ecosystem_sim.visualization.utils import (
-    ensure_output_dir,
-    load_json,
-    load_csv_to_dicts,
-)
+from ecosystem_sim.visualization.utils import ensure_output_dir, load_json
 from ecosystem_sim.intelligence.explanation_agent import VisualizationExplainer
 from ecosystem_sim.visualization.graph_viz import (
     plot_interaction_graphs,
@@ -309,7 +304,7 @@ def _generate_index_page(generated: Dict[str, str], output_path: str):
         "  </style>",
         "</head>",
         "<body>",
-        "  <h1>📊 Ecosystem Data Simulator</h1>",
+        "  <h1>[chart] Ecosystem Data Simulator</h1>",
         "  <p>Visualization index for simulation outputs.</p>",
     ]
 
@@ -360,7 +355,7 @@ def run_dashboard(output_dir: str, open_browser: bool = True):
 
     st.set_page_config(
         page_title="Ecosystem Data Simulator - Dashboard",
-        page_icon="📊",
+        page_icon="random",
         layout="wide",
         initial_sidebar_state="expanded",
     )
@@ -386,7 +381,7 @@ def render_dashboard(output_dir: str):
     out = Path(output_dir)
 
     # Sidebar ---------------------------------------------------------------
-    st.sidebar.title("📊 Dashboard")
+    st.sidebar.title("[chart] Dashboard")
     st.sidebar.markdown("**Simulation Outputs**")
     st.sidebar.markdown(f"`{output_dir}`")
 
@@ -404,7 +399,7 @@ def render_dashboard(output_dir: str):
     }
     for label, fpath in files.items():
         exists = fpath.exists()
-        icon = "✅" if exists else "❌"
+        icon = "[OK]" if exists else "[X]"
         st.sidebar.markdown(f"{icon} **{label}**")
         if exists:
             size_kb = fpath.stat().st_size / 1024
@@ -412,22 +407,22 @@ def render_dashboard(output_dir: str):
 
     st.sidebar.markdown("---")
     st.sidebar.markdown(
-        "Built with Plotly • Streamlit • NetworkX",
+        "Built with Plotly | Streamlit | NetworkX",
         help="Technology stack used for visualizations",
     )
 
     # Main area -------------------------------------------------------------
-    st.title("📊 Ecosystem Data Simulator")
+    st.title("[chart] Ecosystem Data Simulator")
     st.markdown(
         "Interactive dashboard for exploring simulation outputs. "
         "Each tab provides a different analytical perspective on the generated data."
     )
 
     tab_names = [
-        "📈 Time Series",
-        "🌐 Graphs",
-        "📊 Distributions",
-        "📋 Reports",
+        "[trend] Time Series",
+        "[web] Graphs",
+        "[chart] Distributions",
+        "[report] Reports",
     ]
     tabs = st.tabs(tab_names)
 

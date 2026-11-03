@@ -5,11 +5,10 @@ Uses Plotly for interactive histograms, box plots, bar charts, and Qini curves.
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -329,7 +328,7 @@ def plot_lift_summary(
                 ],
             ),
             title=dict(
-                text=f"p-value<br>{'✅ Significant' if significant else '❌ Not Significant'}"
+                text=f"p-value<br>{'[OK] Significant' if significant else '[X] Not Significant'}"
             ),
         ),
         row=1,
@@ -765,7 +764,7 @@ def render_distribution_tab(output_dir: str):
     """
     import streamlit as st
 
-    st.header("📊 Distribution Visualizations")
+    st.header("[chart] Distribution Visualizations")
 
     lift_path = Path(output_dir) / "lift_report.json"
     gt_path = Path(output_dir) / "ground_truth.json"
@@ -785,19 +784,19 @@ def render_distribution_tab(output_dir: str):
             # Show decile chart
             decile_path = Path(output_dir) / "viz/distributions/lift_deciles.html"
             if decile_path.exists():
-                with open(decile_path) as f:
+                with open(decile_path, encoding="utf-8") as f:
                     st.components.v1.html(f.read(), height=500, scrolling=True)
 
             # Show Qini curve
             qini_path = Path(output_dir) / "viz/distributions/qini_curve.html"
             if qini_path.exists():
-                with open(qini_path) as f:
+                with open(qini_path, encoding="utf-8") as f:
                     st.components.v1.html(f.read(), height=500, scrolling=True)
 
             # Show summary dashboard
             summary_path = Path(output_dir) / "viz/distributions/lift_summary.html"
             if summary_path.exists():
-                with open(summary_path) as f:
+                with open(summary_path, encoding="utf-8") as f:
                     st.components.v1.html(f.read(), height=600, scrolling=True)
         else:
             st.info("No lift report found.")
@@ -806,14 +805,14 @@ def render_distribution_tab(output_dir: str):
         st.subheader("Propensity Score Distributions")
         prop_path = Path(output_dir) / "viz/distributions/propensity_distributions.html"
         if prop_path.exists():
-            with open(prop_path) as f:
+            with open(prop_path, encoding="utf-8") as f:
                 st.components.v1.html(f.read(), height=700, scrolling=True)
         else:
             st.info("No propensity distributions available.")
 
         price_path = Path(output_dir) / "viz/distributions/price_sensitivity.html"
         if price_path.exists():
-            with open(price_path) as f:
+            with open(price_path, encoding="utf-8") as f:
                 st.components.v1.html(f.read(), height=450, scrolling=True)
 
     with tab3:
@@ -830,7 +829,7 @@ def render_distribution_tab(output_dir: str):
                 Path(output_dir) / "viz/distributions/cluster_size_distribution.html"
             )
             if cluster_path.exists():
-                with open(cluster_path) as f:
+                with open(cluster_path, encoding="utf-8") as f:
                     st.components.v1.html(f.read(), height=450, scrolling=True)
         else:
             st.info("No stitching data found.")

@@ -1,7 +1,7 @@
 """Time-based pattern management for realistic temporal behavior."""
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional
 import numpy as np
 
 

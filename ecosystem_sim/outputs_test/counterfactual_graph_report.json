@@ -1,0 +1,343 @@
+{
+  "scenarios": {
+    "factual": {
+      "metrics": {
+        "n_users_with_graphs": 5,
+        "total_events": 979,
+        "total_edges": 41,
+        "avg_degree": 0.0838,
+        "edge_density": 8.6e-05,
+        "avg_events_per_user": 195.8,
+        "avg_edges_per_user": 8.2
+      },
+      "n_events": 979
+    },
+    "no_treatment": {
+      "metrics": {
+        "n_users_with_graphs": 5,
+        "total_events": 837,
+        "total_edges": 36,
+        "avg_degree": 0.086,
+        "edge_density": 0.000103,
+        "avg_events_per_user": 167.4,
+        "avg_edges_per_user": 7.2
+      },
+      "n_events": 837
+    },
+    "double_treatment": {
+      "metrics": {
+        "n_users_with_graphs": 5,
+        "total_events": 1061,
+        "total_edges": 43,
+        "avg_degree": 0.0811,
+        "edge_density": 7.6e-05,
+        "avg_events_per_user": 212.2,
+        "avg_edges_per_user": 8.6
+      },
+      "n_events": 1061
+    },
+    "optimal_treatment": {
+      "metrics": {
+        "n_users_with_graphs": 5,
+        "total_events": 1064,
+        "total_edges": 60,
+        "avg_degree": 0.1128,
+        "edge_density": 0.000106,
+        "avg_events_per_user": 212.8,
+        "avg_edges_per_user": 12.0
+      },
+      "n_events": 1064
+    },
+    "confounder_shift": {
+      "metrics": {
+        "n_users_with_graphs": 5,
+        "total_events": 1148,
+        "total_edges": 45,
+        "avg_degree": 0.0784,
+        "edge_density": 6.8e-05,
+        "avg_events_per_user": 229.6,
+        "avg_edges_per_user": 9.0
+      },
+      "n_events": 1148
+    }
+  },
+  "comparison": {
+    "per_world": {
+      "factual": {
+        "n_users_with_graphs": 5,
+        "total_events": 979,
+        "total_edges": 41,
+        "avg_degree": 0.0838,
+        "edge_density": 8.6e-05,
+        "avg_events_per_user": 195.8,
+        "avg_edges_per_user": 8.2
+      },
+      "no_treatment": {
+        "n_users_with_graphs": 5,
+        "total_events": 837,
+        "total_edges": 36,
+        "avg_degree": 0.086,
+        "edge_density": 0.000103,
+        "avg_events_per_user": 167.4,
+        "avg_edges_per_user": 7.2
+      },
+      "double_treatment": {
+        "n_users_with_graphs": 5,
+        "total_events": 1061,
+        "total_edges": 43,
+        "avg_degree": 0.0811,
+        "edge_density": 7.6e-05,
+        "avg_events_per_user": 212.2,
+        "avg_edges_per_user": 8.6
+      },
+      "optimal_treatment": {
+        "n_users_with_graphs": 5,
+        "total_events": 1064,
+        "total_edges": 60,
+        "avg_degree": 0.1128,
+        "edge_density": 0.000106,
+        "avg_events_per_user": 212.8,
+        "avg_edges_per_user": 12.0
+      },
+      "confounder_shift": {
+        "n_users_with_graphs": 5,
+        "total_events": 1148,
+        "total_edges": 45,
+        "avg_degree": 0.0784,
+        "edge_density": 6.8e-05,
+        "avg_events_per_user": 229.6,
+        "avg_edges_per_user": 9.0
+      }
+    },
+    "deltas": {
+      "no_treatment": {
+        "delta_n_users_with_graphs": 0.0,
+        "delta_total_events": -14.5,
+        "delta_total_edges": -12.2,
+        "delta_avg_degree": 2.63,
+        "delta_edge_density": 19.77,
+        "delta_avg_events_per_user": -14.5,
+        "delta_avg_edges_per_user": -12.2
+      },
+      "double_treatment": {
+        "delta_n_users_with_graphs": 0.0,
+        "delta_total_events": 8.38,
+        "delta_total_edges": 4.88,
+        "delta_avg_degree": -3.22,
+        "delta_edge_density": -11.63,
+        "delta_avg_events_per_user": 8.38,
+        "delta_avg_edges_per_user": 4.88
+      },
+      "optimal_treatment": {
+        "delta_n_users_with_graphs": 0.0,
+        "delta_total_events": 8.68,
+        "delta_total_edges": 46.34,
+        "delta_avg_degree": 34.61,
+        "delta_edge_density": 23.26,
+        "delta_avg_events_per_user": 8.68,
+        "delta_avg_edges_per_user": 46.34
+      },
+      "confounder_shift": {
+        "delta_n_users_with_graphs": 0.0,
+        "delta_total_events": 17.26,
+        "delta_total_edges": 9.76,
+        "delta_avg_degree": -6.44,
+        "delta_edge_density": -20.93,
+        "delta_avg_events_per_user": 17.26,
+        "delta_avg_edges_per_user": 9.76
+      }
+    },
+    "most_affected_users": [
+      {
+        "user_id": "U_000003",
+        "scenario": "optimal_treatment",
+        "factual_edges": 12,
+        "counterfactual_edges": 30,
+        "delta_edges": 18,
+        "delta_percent": 150.0
+      },
+      {
+        "user_id": "U_000004",
+        "scenario": "double_treatment",
+        "factual_edges": 8,
+        "counterfactual_edges": 19,
+        "delta_edges": 11,
+        "delta_percent": 137.5
+      },
+      {
+        "user_id": "U_000002",
+        "scenario": "optimal_treatment",
+        "factual_edges": 9,
+        "counterfactual_edges": 0,
+        "delta_edges": -9,
+        "delta_percent": -100.0
+      },
+      {
+        "user_id": "U_000004",
+        "scenario": "confounder_shift",
+        "factual_edges": 8,
+        "counterfactual_edges": 16,
+        "delta_edges": 8,
+        "delta_percent": 100.0
+      },
+      {
+        "user_id": "U_000002",
+        "scenario": "double_treatment",
+        "factual_edges": 9,
+        "counterfactual_edges": 2,
+        "delta_edges": -7,
+        "delta_percent": -77.78
+      },
+      {
+        "user_id": "U_000002",
+        "scenario": "no_treatment",
+        "factual_edges": 9,
+        "counterfactual_edges": 4,
+        "delta_edges": -5,
+        "delta_percent": -55.56
+      },
+      {
+        "user_id": "U_000004",
+        "scenario": "optimal_treatment",
+        "factual_edges": 8,
+        "counterfactual_edges": 12,
+        "delta_edges": 4,
+        "delta_percent": 50.0
+      },
+      {
+        "user_id": "U_000000",
+        "scenario": "optimal_treatment",
+        "factual_edges": 12,
+        "counterfactual_edges": 17,
+        "delta_edges": 5,
+        "delta_percent": 41.67
+      },
+      {
+        "user_id": "U_000000",
+        "scenario": "no_treatment",
+        "factual_edges": 12,
+        "counterfactual_edges": 10,
+        "delta_edges": -2,
+        "delta_percent": -16.67
+      },
+      {
+        "user_id": "U_000003",
+        "scenario": "confounder_shift",
+        "factual_edges": 12,
+        "counterfactual_edges": 10,
+        "delta_edges": -2,
+        "delta_percent": -16.67
+      }
+    ]
+  },
+  "causal_pathways": [
+    {
+      "scenario": "optimal_treatment",
+      "pathway_name": "targeted_treatment",
+      "label": "Targeted Treatment Effect",
+      "description": "Impact of targeting only high-affinity users with boosted ads",
+      "effect_sizes": {
+        "total_edges": {
+          "factual": 41.0,
+          "counterfactual": 60.0,
+          "absolute_change": 19.0,
+          "relative_change_pct": 46.34
+        },
+        "edge_density": {
+          "factual": 8.6e-05,
+          "counterfactual": 0.000106,
+          "absolute_change": 0.0,
+          "relative_change_pct": 23.26
+        },
+        "avg_degree": {
+          "factual": 0.0838,
+          "counterfactual": 0.1128,
+          "absolute_change": 0.029,
+          "relative_change_pct": 34.61
+        }
+      },
+      "interpretation": "Targeted Treatment Effect: Strong increases user engagement graph by 46.3% (consistent with expected direction)."
+    },
+    {
+      "scenario": "no_treatment",
+      "pathway_name": "ad_removal",
+      "label": "Ad Removal Effect",
+      "description": "Impact of removing all advertising on user engagement graph",
+      "effect_sizes": {
+        "total_edges": {
+          "factual": 41.0,
+          "counterfactual": 36.0,
+          "absolute_change": -5.0,
+          "relative_change_pct": -12.2
+        },
+        "edge_density": {
+          "factual": 8.6e-05,
+          "counterfactual": 0.000103,
+          "absolute_change": 0.0,
+          "relative_change_pct": 19.77
+        },
+        "avg_degree": {
+          "factual": 0.0838,
+          "counterfactual": 0.086,
+          "absolute_change": 0.0022,
+          "relative_change_pct": 2.63
+        }
+      },
+      "interpretation": "Ad Removal Effect: Moderate decreases user engagement graph by 12.2% (consistent with expected direction)."
+    },
+    {
+      "scenario": "confounder_shift",
+      "pathway_name": "affinity_shift",
+      "label": "Base Affinity Shift Effect",
+      "description": "Impact of increasing all users' base category affinity",
+      "effect_sizes": {
+        "total_edges": {
+          "factual": 41.0,
+          "counterfactual": 45.0,
+          "absolute_change": 4.0,
+          "relative_change_pct": 9.76
+        },
+        "edge_density": {
+          "factual": 8.6e-05,
+          "counterfactual": 6.8e-05,
+          "absolute_change": -0.0,
+          "relative_change_pct": -20.93
+        },
+        "avg_degree": {
+          "factual": 0.0838,
+          "counterfactual": 0.0784,
+          "absolute_change": -0.0054,
+          "relative_change_pct": -6.44
+        }
+      },
+      "interpretation": "Base Affinity Shift Effect: Moderate increases user engagement graph by 9.8% (consistent with expected direction)."
+    },
+    {
+      "scenario": "double_treatment",
+      "pathway_name": "ad_doubling",
+      "label": "Ad Doubling Effect",
+      "description": "Impact of doubling ad exposure on user engagement graph",
+      "effect_sizes": {
+        "total_edges": {
+          "factual": 41.0,
+          "counterfactual": 43.0,
+          "absolute_change": 2.0,
+          "relative_change_pct": 4.88
+        },
+        "edge_density": {
+          "factual": 8.6e-05,
+          "counterfactual": 7.6e-05,
+          "absolute_change": -0.0,
+          "relative_change_pct": -11.63
+        },
+        "avg_degree": {
+          "factual": 0.0838,
+          "counterfactual": 0.0811,
+          "absolute_change": -0.0027,
+          "relative_change_pct": -3.22
+        }
+      },
+      "interpretation": "Ad Doubling Effect: Weak increases user engagement graph by 4.9% (consistent with expected direction)."
+    }
+  ]
+}

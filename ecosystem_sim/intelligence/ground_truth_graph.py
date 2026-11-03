@@ -14,7 +14,7 @@ Three graph views are provided:
     3. **User→Log graph** — same as User→Event, with richer metadata on edges.
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from collections import defaultdict
 
 import networkx as nx

@@ -234,5 +234,4 @@ class CommerceStream(BaseStream):
                         )
                         events.append(abandon_event)
 
-        self.events.extend(events)
         return events

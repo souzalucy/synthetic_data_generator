@@ -169,7 +169,7 @@ class LiftAnalyzer:
             try:
                 t_stat, p_value = ttest_ind(exposed_purchases, counterfactual_purchases)
                 results["p_value"] = p_value
-            except:
+            except (TypeError, ValueError, ZeroDivisionError):
                 results["p_value"] = 1.0
 
         # Calculate AUUC (Area Under Uplift Curve)
@@ -419,7 +419,7 @@ class LiftAnalyzer:
                 u_stat, p_value = mannwhitneyu(
                     treatment_conversions, control_conversions
                 )
-            except:
+            except (TypeError, ValueError):
                 p_value = 1.0
         else:
             p_value = 1.0

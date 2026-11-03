@@ -256,7 +256,7 @@ class CausalEngine:
 
             print(
                 f"  [CAUSAL] Trajectories generated on {self._device_type.upper()} "
-                f"({self.n_users} users × {n_days} days × {n_cats} categories)"
+                f"({self.n_users} users x {n_days} days x {n_cats} categories)"
             )
             return interest_t.cpu().numpy()
 
@@ -764,7 +764,7 @@ class CausalEngine:
             + [f"day_{d}_base_affinity_counterfactual" for d in range(n_days)]
         )
 
-        with open(filepath, "w", newline="") as f:
+        with open(filepath, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             for i, user in enumerate(self.users):
@@ -825,7 +825,7 @@ class CausalEngine:
             "interest_matrix": interest_matrix_3d,
         }
 
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(ground_truth, f, indent=2)
 
     def export_causal_table(self, filepath: str, interest_matrix: np.ndarray):
@@ -846,7 +846,7 @@ class CausalEngine:
             f"day_{d}_base_affinity" for d in range(n_days)
         ]
 
-        with open(filepath, "w", newline="") as f:
+        with open(filepath, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             for i, user in enumerate(self.users):

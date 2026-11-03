@@ -1,11 +1,10 @@
 """Dataset-specific validation metrics for synthetic data quality."""
 
 import numpy as np
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict
 import json
 from pathlib import Path
 import math
-from datetime import datetime
 
 
 class DatasetValidator:
@@ -29,7 +28,7 @@ class DatasetValidator:
     def _load_priors(self) -> Dict:
         """Load compiled dataset priors."""
         if self.priors_path.exists():
-            with open(self.priors_path, "r") as f:
+            with open(self.priors_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         return {}
 
@@ -148,7 +147,7 @@ class DatasetValidator:
                 try:
                     hour = int(event["timestamp"].split("T")[1].split(":")[0])
                     temporal_patterns.append(hour)
-                except:
+                except (IndexError, ValueError):
                     pass
 
         # Get Instacart benchmarks

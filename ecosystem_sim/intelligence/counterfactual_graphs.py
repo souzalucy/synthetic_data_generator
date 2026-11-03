@@ -6,11 +6,10 @@ causal pathways and measure graph-level treatment effects.
 """
 
 import json
+import os
 import numpy as np
-from typing import List, Dict, Tuple, Optional, Any, Callable
-from collections import defaultdict
-from datetime import datetime, timedelta
-import math
+from typing import List, Dict, Optional, Any
+from pathlib import Path
 
 from .graph_stitcher import GraphStitcher
 
@@ -52,8 +51,9 @@ class CounterfactualGraphStitcher(GraphStitcher):
         causal_engine,
         users: List,
         factual_interest_matrix: np.ndarray,
-        events_by_scenario: Optional[Dict[str, List[Dict]]] = None,
+                events_by_scenario: Optional[Dict[str, List[Dict]]] = None,
         intervention_day: int = 14,
+        scenario_graphs_output_dir: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate interaction graphs for all counterfactual scenarios.
 
@@ -68,6 +68,13 @@ class CounterfactualGraphStitcher(GraphStitcher):
             intervention_day: Day at which the intervention (marketing action)
                 occurs. Before this day, trajectories match the factual world.
                 Default: 14.
+            scenario_graphs_output_dir: Optional directory to export the full
+                edge lists (the real graph structure) for every scenario. When
+                provided, each scenario writes ``{scenario}_graph.json``
+                containing per-user edge lists, and the streaming edge-buffer
+                temp files are cleaned up. When ``None``, the edge buffers are
+                still removed (so temp files aren't leaked) but no graph files
+                are written.
 
         Returns:
             Dict with keys:
@@ -79,6 +86,12 @@ class CounterfactualGraphStitcher(GraphStitcher):
         scenarios = self._define_scenarios(
             causal_engine, factual_interest_matrix, intervention_day
         )
+
+        # Prepare output directory for per-scenario full graph exports
+        graphs_dir: Optional[Path] = None
+        if scenario_graphs_output_dir is not None:
+            graphs_dir = Path(scenario_graphs_output_dir)
+            graphs_dir.mkdir(parents=True, exist_ok=True)
 
         # Build graphs for each scenario
         self.scenario_graphs = {}
@@ -97,6 +110,14 @@ class CounterfactualGraphStitcher(GraphStitcher):
                 "n_events": len(events),
             }
 
+            # Persist the real per-user edge lists for this scenario, then
+            # clean up the streaming edge buffer so temp files aren't leaked.
+            if graphs_dir is not None:
+                graph_path = graphs_dir / f"{name}_graph.json"
+                self.export_interaction_graphs(graph_data, str(graph_path))
+            else:
+                self._cleanup_edge_buffer(graph_data)
+
         # Compute cross-scenario comparisons
         comparison = self._compare_all_scenarios()
 
@@ -108,12 +129,27 @@ class CounterfactualGraphStitcher(GraphStitcher):
                 name: {
                     "metrics": data["graph"]["metrics"],
                     "n_events": data["n_events"],
+                    "graph_file": (
+                        str(graphs_dir / f"{name}_graph.json")
+                        if graphs_dir is not None
+                        else None
+                    ),
                 }
                 for name, data in self.scenario_graphs.items()
             },
             "comparison": comparison,
             "causal_pathways": causal_pathways,
         }
+
+    @staticmethod
+    def _cleanup_edge_buffer(graph_data: Dict[str, Any]) -> None:
+        """Remove a scenario's temporary edge buffer file if it still exists."""
+        edge_buffer_path = graph_data.get("edge_buffer_path")
+        if edge_buffer_path and os.path.exists(edge_buffer_path):
+            try:
+                os.remove(edge_buffer_path)
+            except OSError:
+                pass
 
     def _define_scenarios(
         self,
@@ -518,7 +554,7 @@ class CounterfactualGraphStitcher(GraphStitcher):
         # Convert numpy types for JSON serialization
         cleaned = json.loads(json.dumps(report_data, default=self._json_serialize))
 
-        with open(output_path, "w") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(cleaned, f, indent=2)
 
     @staticmethod

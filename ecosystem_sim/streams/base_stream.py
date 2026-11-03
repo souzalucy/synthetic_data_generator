@@ -2,7 +2,6 @@
 
 import json
 import uuid
-from datetime import datetime
 from typing import List, Dict, Optional, Any
 from abc import ABC, abstractmethod
 
@@ -49,8 +48,13 @@ class BaseStream(ABC):
         self.taxonomy = taxonomy
         self.name = name
         self.priors = priors
-        self.events = []  # Anonymized events (user_id may be None) — exported to JSONL
-        self.events_ground_truth = []  # Ground-truth events (always with real user_id) — never exported
+        # Anonymized events (user_id may be None) — exported to JSONL.
+        # NOTE: ``self.events`` is populated *only* by ``create_base_event``.
+        # Subclasses must not extend it again with the list returned by
+        # ``generate_event`` or every event ends up stored (and exported) twice.
+        self.events = []
+        # Ground-truth events (always with real user_id) — never exported
+        self.events_ground_truth = []
         self.event_counter = 0
 
     def create_base_event(
@@ -69,28 +73,40 @@ class BaseStream(ABC):
         2. Ground-truth (stored in self.events_ground_truth, never exported) —
            always contains the real user_id for deterministic device stitching.
 
+        This method is the *only* place where ``self.events`` and
+        ``self.events_ground_truth`` are written, so callers must not append the
+        returned dict to ``self.events`` again.
+
         Args:
             user_id: User ID (may be omitted probabilistically based on privacy)
             device_id: Device ID
             timestamp: ISO format timestamp
             event_type: Type of event
-            user: Optional User object for privacy-based user_id omission
+            user: Optional User object for privacy-based user_id omission and
+                for resolving the device's ``device_type`` / ``os``
 
         Returns:
             Anonymized base event dictionary (for JSONL export / probabilistic stitching)
         """
         self.event_counter += 1
 
-        # Find device to get device_type and os
+        # Resolve device metadata (device_type / os) from the owning user so the
+        # events carry real device attributes instead of the "unknown" placeholder.
         device_info = {"device_type": "unknown", "os": "unknown"}
+        if user is not None:
+            for device in getattr(user, "devices", None) or []:
+                if getattr(device, "device_id", None) == device_id:
+                    device_info = {
+                        "device_type": device.device_type,
+                        "os": device.os,
+                    }
+                    break
 
         # Probabilistic user_id omission based on privacy sensitivity
         # Privacy-Focused users have HIGH sensitivity -> more likely to omit user_id
         # This creates realistic unidentified logs for the GraphStitcher to resolve
         resolved_user_id = user_id
         if user is not None:
-            from ecosystem_sim.core.user_agent import PrivacySensitivity
-
             privacy_val = (
                 user.persona.privacy_sensitivity.value
             )  # LOW=0.2, MEDIUM=0.5, HIGH=0.9
@@ -158,7 +174,7 @@ class BaseStream(ABC):
         Args:
             filepath: Output file path
         """
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             for event in self.events:
                 f.write(json.dumps(event, cls=NumpyEncoder) + "\n")
 

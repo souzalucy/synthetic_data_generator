@@ -1,9 +1,8 @@
 """Social stream for social network events with GoEmotions sentiment dynamics."""
 
 import numpy as np
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 from .base_stream import BaseStream
-from datetime import datetime, timedelta
 import random
 
 
@@ -290,10 +289,10 @@ class SocialStream(BaseStream):
         # Text templates based on emotion
         emotion_templates = {
             "joy": [
-                "Having a great day! 😊",
+                "Having a great day! :-)",
                 "So excited about this!",
                 "This made me really happy!",
-                "Feeling blessed today 🙏",
+                "Feeling blessed today",
             ],
             "sadness": [
                 "Not having the best day...",
@@ -539,7 +538,6 @@ class SocialStream(BaseStream):
 
             events.append(social_event)
 
-        self.events.extend(events)
         return events
 
     def get_user_emotion_summary(self, user_id: str) -> Dict:

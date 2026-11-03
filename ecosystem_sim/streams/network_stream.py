@@ -82,7 +82,6 @@ class NetworkStream(BaseStream):
         if self.should_generate_event(probabilities.get("review", 0.05)):
             events.append(self._create_product_review_event(user, timestamp))
 
-        self.events.extend(events)
         return events
 
     def _is_developer(self, user) -> bool:

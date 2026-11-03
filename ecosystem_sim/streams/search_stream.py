@@ -228,7 +228,6 @@ class SearchStream(BaseStream):
                         )
                         events.append(ad_click)
 
-        self.events.extend(events)
         return events
 
     def _sample_click_position(self) -> int:

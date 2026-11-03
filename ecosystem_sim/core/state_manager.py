@@ -5,7 +5,6 @@ import numpy as np
 from .causal_engine import CausalEngine
 from .time_manager import TimeManager
 from .user_agent import User
-from .prior_loader import get_prior
 
 
 class StateManager:

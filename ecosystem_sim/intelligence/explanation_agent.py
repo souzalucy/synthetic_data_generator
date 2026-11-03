@@ -25,7 +25,7 @@ Usage::
 import json
 import os
 import re
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, Optional, Callable
 
 import numpy as np
 
@@ -58,7 +58,7 @@ def _template_lift_deciles(data: Dict) -> str:
     if not deciles:
         return (
             "This lift decile chart shows how campaign effectiveness varies "
-            "across user segments. No decile data is available yet — run the "
+            "across user segments. No decile data is available yet - run the "
             "lift analysis phase first."
         )
     best_decile = max(deciles, key=lambda d: d.get("avg_uplift", 0))
@@ -156,7 +156,7 @@ def _template_persona_trajectories(data: Dict) -> str:
         f"({', '.join(personas) if personas else 'N/A'}) over **{n_days} days**. "
         f"Each subplot shows individual users as thin translucent lines and the "
         f"persona average as a bold line. This reveals whether personas follow "
-        f"distinct interest patterns — for example, whether 'Tech-Savvy Millennials' "
+        f"distinct interest patterns - for example, whether 'Tech-Savvy Millennials' "
         f"show consistently higher affinity than 'Budget-Conscious Parents'."
     )
 
@@ -172,7 +172,7 @@ def _template_counterfactual_deltas(data: Dict) -> str:
     if not scenarios:
         return (
             "This chart compares graph metrics across counterfactual scenarios. "
-            "No delta data is available — enable counterfactual graph analysis "
+            "No delta data is available - enable counterfactual graph analysis "
             "in the configuration."
         )
     # Find the scenario with the largest absolute delta
@@ -205,7 +205,7 @@ def _template_causal_pathways(data: Dict) -> str:
     pathways = data.get("causal_pathways", [])
     if not pathways:
         return (
-            "This section displays discovered causal pathways — the mechanisms "
+            "This section displays discovered causal pathways - the mechanisms "
             "through which interventions affect the user engagement graph. "
             "No pathways were found; this may indicate weak treatment effects "
             "or insufficient graph structure."
@@ -219,7 +219,7 @@ def _template_causal_pathways(data: Dict) -> str:
         ),
     )
     return (
-        f"This analysis discovered **{len(pathways)} causal pathways** — the "
+        f"This analysis discovered **{len(pathways)} causal pathways** - the "
         f"mechanisms linking interventions to changes in user engagement. "
         f"The strongest pathway is "
         f"**'{strongest.get('label', 'Unknown')}'** with a "
@@ -296,7 +296,7 @@ def _template_propensity_distributions(data: Dict) -> str:
         f"vary across the user population (**{n_users} users**, "
         f"**{n_personas} personas**). "
         f"The box plots reveal differences "
-        f"between persona types — some personas may have inherently higher "
+        f"between persona types - some personas may have inherently higher "
         f"affinity or be more responsive to treatment. The histograms show "
         f"the overall population distribution, which helps identify whether "
         f"the treatment effect is concentrated in a subset of users or "
@@ -314,7 +314,7 @@ def _template_price_sensitivity(data: Dict) -> str:
         f"sensitivity analysis. Personas with higher treatment effects are "
         f"more responsive to advertising interventions, which may correlate "
         f"with price sensitivity. The error bars show within-persona "
-        f"variability — wide bars indicate heterogeneous responses within "
+        f"variability - wide bars indicate heterogeneous responses within "
         f"a persona group."
     )
 
@@ -330,7 +330,7 @@ def _template_cluster_size_distribution(data: Dict) -> str:
         f"The average cluster size is **{avg_size:.1f} devices**. "
         f"Most users have 1-3 devices, but some clusters may be larger, "
         f"indicating users with many connected devices. The box plot "
-        f"highlights outliers — unusually large clusters that may represent "
+        f"highlights outliers - unusually large clusters that may represent "
         f"shared devices (e.g., family tablets) or stitching errors."
     )
 
@@ -352,7 +352,7 @@ def _template_treatment_matrix(data: Dict) -> str:
         f"Treatment effects represent how "
         f"strongly each user responds to advertising, while base affinity is "
         f"their inherent interest level. The spread of these distributions "
-        f"determines how much uplift a campaign can achieve — more variation "
+        f"determines how much uplift a campaign can achieve - more variation "
         f"means more opportunity for targeted treatment."
     )
 
@@ -371,7 +371,7 @@ def _template_interest_heatmap(data: Dict) -> str:
         f"**{n_categories} content categories** (y-axis). "
         f"The overall mean interest is **{mean_interest:.4f}**. "
         f"Brighter colours indicate higher interest. "
-        f"Vertical patterns reveal temporal trends — for example, interest may "
+        f"Vertical patterns reveal temporal trends - for example, interest may "
         f"grow over time due to persistence effects. Horizontal patterns show "
         f"which categories are most engaging overall. This helps identify both "
         f"seasonal and structural interest patterns."
@@ -489,7 +489,7 @@ class VisualizationExplainer:
                     style="background:#636EFA;color:white;border:none;
                            padding:8px 20px;border-radius:5px;cursor:pointer;
                            font-size:14px;">
-                📊 {title}
+                [chart] {title}
             </button>
         </div>
         <div id="explanation-box"
@@ -721,7 +721,7 @@ class VisualizationExplainer:
             elif isinstance(v, dict):
                 for sk, sv in v.items():
                     if isinstance(sv, (int, float)):
-                        label = f"{k.replace('_', ' ').title()} — {sk.replace('_', ' ').title()}"
+                        label = f"{k.replace('_', ' ').title()} - {sk.replace('_', ' ').title()}"
                         if isinstance(sv, float):
                             highlights.append(f"- **{label}**: {sv:.4f}")
                         else:

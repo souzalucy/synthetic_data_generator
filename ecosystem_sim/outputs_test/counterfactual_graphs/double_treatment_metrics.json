@@ -1,0 +1,12 @@
+{
+  "metrics": {
+    "n_users_with_graphs": 5,
+    "total_events": 1061,
+    "total_edges": 43,
+    "avg_degree": 0.0811,
+    "edge_density": 7.6e-05,
+    "avg_events_per_user": 212.2,
+    "avg_edges_per_user": 8.6
+  },
+  "n_events": 1061
+}

@@ -1,0 +1,104 @@
+{
+  "campaign_id": "campaign_001",
+  "exposed_users": [
+    {
+      "user_id": "U_000000",
+      "actual": 0.09944219852562747,
+      "counterfactual": 0.07847922462477801,
+      "incremental": 0.02096297390084946,
+      "uplift_score": 0.02096297390084946
+    },
+    {
+      "user_id": "U_000001",
+      "actual": 0.022024259440366952,
+      "counterfactual": 0.020023467433307414,
+      "incremental": 0.0020007920070595382,
+      "uplift_score": 0.0020007920070595382
+    },
+    {
+      "user_id": "U_000002",
+      "actual": 0.046056448359576736,
+      "counterfactual": 0.04002838180511074,
+      "incremental": 0.0060280665544659995,
+      "uplift_score": 0.0060280665544659995
+    },
+    {
+      "user_id": "U_000003",
+      "actual": 0.09931519540298622,
+      "counterfactual": 0.0783901555430217,
+      "incremental": 0.020925039859964523,
+      "uplift_score": 0.020925039859964523
+    },
+    {
+      "user_id": "U_000004",
+      "actual": 0.11829064220033107,
+      "counterfactual": 0.08368561709236132,
+      "incremental": 0.034605025107969756,
+      "uplift_score": 0.034605025107969756
+    }
+  ],
+  "control_users": [],
+  "lift_percent": 28.117089951478803,
+  "p_value": 0.4696920825763284,
+  "auuc": 0.06674181316782635,
+  "qini_coefficient": 0.0,
+  "criteo_benchmark_comparison": {
+    "observed_uplift": 0.281170899514788,
+    "benchmark_average": 0.18,
+    "difference_from_benchmark": 0.10117089951478803,
+    "relative_difference": 56.20605528599335,
+    "statistically_significant": false,
+    "sample_size_adequate": false,
+    "benchmark_notes": [
+      "Results not statistically significant (p > 0.05).",
+      "Sample size (5) below minimum (100) for reliable uplift estimation."
+    ]
+  },
+  "uplift_by_decile": [
+    {
+      "decile": 1,
+      "user_count": 1,
+      "avg_uplift": 0.034605025107969756,
+      "std_uplift": 0,
+      "min_uplift": 0.034605025107969756,
+      "max_uplift": 0.034605025107969756,
+      "cumulative_uplift": 0.034605025107969756
+    },
+    {
+      "decile": 2,
+      "user_count": 1,
+      "avg_uplift": 0.02096297390084946,
+      "std_uplift": 0,
+      "min_uplift": 0.02096297390084946,
+      "max_uplift": 0.02096297390084946,
+      "cumulative_uplift": 0.02096297390084946
+    },
+    {
+      "decile": 3,
+      "user_count": 1,
+      "avg_uplift": 0.020925039859964523,
+      "std_uplift": 0,
+      "min_uplift": 0.020925039859964523,
+      "max_uplift": 0.020925039859964523,
+      "cumulative_uplift": 0.020925039859964523
+    },
+    {
+      "decile": 4,
+      "user_count": 1,
+      "avg_uplift": 0.0060280665544659995,
+      "std_uplift": 0,
+      "min_uplift": 0.0060280665544659995,
+      "max_uplift": 0.0060280665544659995,
+      "cumulative_uplift": 0.0060280665544659995
+    },
+    {
+      "decile": 5,
+      "user_count": 1,
+      "avg_uplift": 0.0020007920070595382,
+      "std_uplift": 0,
+      "min_uplift": 0.0020007920070595382,
+      "max_uplift": 0.0020007920070595382,
+      "cumulative_uplift": 0.0020007920070595382
+    }
+  ]
+}

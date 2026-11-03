@@ -3,8 +3,7 @@
 import json
 import csv
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-import numpy as np
+from typing import Dict, List, Optional, Any
 import plotly.express as px
 
 
@@ -92,7 +91,7 @@ def load_json(filepath: str) -> Dict:
     path = Path(filepath)
     if not path.exists():
         return {}
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -109,7 +108,7 @@ def load_csv_to_dicts(filepath: str) -> List[Dict[str, Any]]:
     if not path.exists():
         return []
     rows = []
-    with open(path, "r", newline="") as f:
+    with open(path, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             rows.append(row)
@@ -130,7 +129,7 @@ def load_jsonl(filepath: str, max_lines: Optional[int] = None) -> List[Dict]:
     if not path.exists():
         return []
     events = []
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         for i, line in enumerate(f):
             if max_lines is not None and i >= max_lines:
                 break

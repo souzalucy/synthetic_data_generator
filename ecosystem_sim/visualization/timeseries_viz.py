@@ -6,7 +6,7 @@ and per-user subplot grids with delta shading.
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -23,7 +23,6 @@ from .utils import (
     get_persona_dash,
     get_persona_symbol,
     get_fill_alpha,
-    get_scenario_color,
     ensure_output_dir,
 )
 from ecosystem_sim.intelligence.explanation_agent import VisualizationExplainer
@@ -624,7 +623,7 @@ def plot_interest_heatmap(
         aspect="auto",
         color_continuous_scale="Viridis",
         labels=dict(x="Day", y="Category", color="Avg Interest"),
-        title="Average Interest: Days × Categories",
+        title="Average Interest: Days x Categories",
     )
     fig.update_layout(
         title_x=0.5,
@@ -848,7 +847,7 @@ def plot_counterfactual_table(
         day_labels.append(day_num)
         headers.append(f"Day {day_num}<br>Factual")
         headers.append(f"Day {day_num}<br>Counterfactual")
-        headers.append(f"Day {day_num}<br>Δ")
+        headers.append(f"Day {day_num}<br>Delta")
 
     # Build cell values and colors
     cell_values = {h: [] for h in headers}
@@ -878,17 +877,17 @@ def plot_counterfactual_table(
             cell_colors[f"Day {day_num}<br>Counterfactual"].append("white")
 
             # Delta cell with color coding
-            cell_values[f"Day {day_num}<br>Δ"].append(f"{delta:+.4f}")
+            cell_values[f"Day {day_num}<br>Delta"].append(f"{delta:+.4f}")
             if delta > 0.01:
-                cell_colors[f"Day {day_num}<br>Δ"].append(
+                cell_colors[f"Day {day_num}<br>Delta"].append(
                     "rgba(0, 200, 83, 0.2)"
                 )  # green
             elif delta < -0.01:
-                cell_colors[f"Day {day_num}<br>Δ"].append(
+                cell_colors[f"Day {day_num}<br>Delta"].append(
                     "rgba(255, 82, 82, 0.2)"
                 )  # red
             else:
-                cell_colors[f"Day {day_num}<br>Δ"].append(
+                cell_colors[f"Day {day_num}<br>Delta"].append(
                     "rgba(200, 200, 200, 0.2)"
                 )  # gray
 
@@ -964,7 +963,7 @@ def render_timeseries_tab(output_dir: str):
     """
     import streamlit as st
 
-    st.header("📈 Time-Series Visualizations")
+    st.header("[trend] Time-Series Visualizations")
 
     csv_path = Path(output_dir) / "causal_ground_truth.csv"
     cf_csv_path = Path(output_dir) / "causal_table_with_counterfactual.csv"
@@ -976,7 +975,7 @@ def render_timeseries_tab(output_dir: str):
         st.subheader("Causal Trajectories")
         traj_path = Path(output_dir) / "viz/timeseries/causal_trajectories.html"
         if traj_path.exists():
-            with open(traj_path) as f:
+            with open(traj_path, encoding="utf-8") as f:
                 st.components.v1.html(f.read(), height=500, scrolling=True)
         elif csv_path.exists():
             st.info("Trajectories not yet generated. Run visualization phase.")
@@ -987,7 +986,7 @@ def render_timeseries_tab(output_dir: str):
         st.subheader("Interest Heatmap")
         heatmap_path = Path(output_dir) / "viz/timeseries/interest_heatmap.html"
         if heatmap_path.exists():
-            with open(heatmap_path) as f:
+            with open(heatmap_path, encoding="utf-8") as f:
                 st.components.v1.html(f.read(), height=400, scrolling=True)
         else:
             st.info("No interest heatmap available.")
@@ -995,7 +994,7 @@ def render_timeseries_tab(output_dir: str):
     st.subheader("Persona Trajectories")
     persona_path = Path(output_dir) / "viz/timeseries/persona_trajectories.html"
     if persona_path.exists():
-        with open(persona_path) as f:
+        with open(persona_path, encoding="utf-8") as f:
             st.components.v1.html(f.read(), height=600, scrolling=True)
     else:
         st.info("No persona trajectory plots available.")
@@ -1003,7 +1002,7 @@ def render_timeseries_tab(output_dir: str):
     st.subheader("Treatment & Affinity Distributions")
     treatment_path = Path(output_dir) / "viz/timeseries/treatment_matrix.html"
     if treatment_path.exists():
-        with open(treatment_path) as f:
+        with open(treatment_path, encoding="utf-8") as f:
             st.components.v1.html(f.read(), height=450, scrolling=True)
     else:
         st.info("No treatment distribution data.")
@@ -1014,7 +1013,7 @@ def render_timeseries_tab(output_dir: str):
         Path(output_dir) / "viz/timeseries/user_counterfactual_comparison.html"
     )
     if user_cf_path.exists():
-        with open(user_cf_path) as f:
+        with open(user_cf_path, encoding="utf-8") as f:
             st.components.v1.html(f.read(), height=600, scrolling=True)
     elif cf_csv_path.exists():
         st.info("User counterfactual comparison not yet generated.")
@@ -1024,7 +1023,7 @@ def render_timeseries_tab(output_dir: str):
     st.subheader("Layer 1 User Table: Factual + Counterfactual")
     table_path = Path(output_dir) / "viz/timeseries/counterfactual_table.html"
     if table_path.exists():
-        with open(table_path) as f:
+        with open(table_path, encoding="utf-8") as f:
             st.components.v1.html(f.read(), height=500, scrolling=True)
     elif cf_csv_path.exists():
         st.info("Counterfactual table not yet generated.")

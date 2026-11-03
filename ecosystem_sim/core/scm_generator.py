@@ -11,8 +11,8 @@ GPU acceleration is used automatically when PyTorch is available and the
 matrix/user sizes exceed configurable thresholds.
 """
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 import numpy as np
 from scipy.linalg import cholesky as cpu_cholesky
 
@@ -267,7 +267,7 @@ class SCMConfounderGenerator:
         n = self.config.n_categories
 
         for transition, prob in amazon.items():
-            parts = transition.split("→")
+            parts = transition.split("->")
             if len(parts) != 2:
                 continue
             # Map category names to indices using hash for deterministic mapping

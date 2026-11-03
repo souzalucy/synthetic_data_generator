@@ -111,5 +111,4 @@ class MediaStream(BaseStream):
                     )
                     events.append(sub_event)
 
-        self.events.extend(events)
         return events

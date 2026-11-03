@@ -11,12 +11,9 @@ dedicated :class:`GroundTruthGraphBuilder` class in ``ground_truth_graph.py``.
 import json
 import os
 import tempfile
-import numpy as np
-from typing import List, Dict, Tuple, Set, Optional, Any
+from typing import List, Dict, Optional, Any
 from collections import defaultdict, deque
-import networkx as nx
-from datetime import datetime, timedelta
-import math
+from datetime import datetime
 from tqdm import tqdm
 
 
@@ -282,6 +279,13 @@ class GraphStitcher:
     ):
         """Infer user_id for events where user_id is None.
 
+        .. note::
+            This Layer 3 inference is **not wired into the pipeline** — the
+            anonymizer intentionally drops ``user_id`` for a fraction of events
+            based on privacy sensitivity, and those events are aggregated into
+            the ``unidentified`` bucket of the interaction graphs. Kept for
+            callers that want to experiment with identity resolution.
+
         Strategy:
         1. Build a device->user mapping from known (explicit) links
         2. For each event with missing user_id, check if its device_id
@@ -453,7 +457,7 @@ class GraphStitcher:
         total_nodes = 0
         total_edges = 0
 
-        with open(edge_buffer_path, "w") as edge_buf:
+        with open(edge_buffer_path, "w", encoding="utf-8") as edge_buf:
             for uid, ue in tqdm(
                 user_events.items(),
                 desc="  [5b] Building interaction graphs",
@@ -525,11 +529,16 @@ class GraphStitcher:
                         set(e.get("service") for e in ue_sorted if e.get("service"))
                     ),
                 }
-                total_nodes += len(ue_sorted)
-                total_edges += n_edges_for_user
+
+        # ``unidentified`` is an aggregate bucket for events whose user could not
+        # be inferred: it is not a user, so it must not skew the per-user metrics.
+        identified_uids = [uid for uid in user_meta if uid != "unidentified"]
+        unidentified_meta = user_meta.get("unidentified", {})
+        n_users = len(identified_uids)
+        total_nodes = sum(user_meta[uid]["n_events"] for uid in identified_uids)
+        total_edges = sum(user_meta[uid]["n_edges"] for uid in identified_uids)
 
         # Compute graph-level metrics
-        n_users = len(user_events)
         avg_degree = (2 * total_edges) / max(total_nodes, 1)
         edge_density = total_edges / max(total_nodes * (total_nodes - 1) / 2, 1)
 
@@ -541,6 +550,8 @@ class GraphStitcher:
             "edge_density": round(edge_density, 6),
             "avg_events_per_user": round(total_nodes / max(n_users, 1), 2),
             "avg_edges_per_user": round(total_edges / max(n_users, 1), 2),
+            "unidentified_events": unidentified_meta.get("n_events", 0),
+            "unidentified_edges": unidentified_meta.get("n_edges", 0),
         }
 
         return {
@@ -569,7 +580,7 @@ class GraphStitcher:
 
         # Group edges by user_id while reading from the buffer
         user_edges: Dict[str, List[Dict]] = defaultdict(list)
-        with open(edge_buffer_path, "r") as f:
+        with open(edge_buffer_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -595,7 +606,7 @@ class GraphStitcher:
             }
 
         # Write final output
-        with open(output_path, "w") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(export, f, indent=2)
 
         # Clean up the temporary buffer file
@@ -608,5 +619,5 @@ class GraphStitcher:
         """Parse ISO timestamp."""
         try:
             return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        except:
+        except (TypeError, ValueError):
             return None

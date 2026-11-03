@@ -64,9 +64,9 @@ def detect_device() -> str:
             return _device_type
 
     except ImportError:
-        logger.info("[DEVICE] PyTorch not installed — falling back to CPU")
+        logger.info("[DEVICE] PyTorch not installed - falling back to CPU")
 
-    logger.info("[DEVICE] No GPU detected — running on CPU")
+    logger.info("[DEVICE] No GPU detected - running on CPU")
     _device_type = "cpu"
     return _device_type
 

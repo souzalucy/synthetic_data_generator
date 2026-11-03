@@ -1,10 +1,11 @@
 """Main orchestrator for ecosystem data simulator."""
 
 import json
+import sys
 import yaml
 import argparse
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 import numpy as np
 from tqdm import tqdm
 
@@ -70,7 +71,7 @@ def load_config(config_path: str) -> Dict:
     Returns:
         Configuration dictionary
     """
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -89,8 +90,56 @@ def load_taxonomy(data_dir: str) -> Dict:
             f"  [WARN] Taxonomy file not found at {taxonomy_path}, using empty taxonomy"
         )
         return {}
-    with open(taxonomy_path, "r") as f:
+    with open(taxonomy_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _configure_console_output() -> None:
+    """Make stdout/stderr tolerant of unencodable characters.
+
+    The simulator prints mathematical notation and arrows (e.g. ``T -> Y``) in
+    its progress messages. On Windows the default console encoding (cp1252)
+    cannot represent several of those code points, which aborts a long run with
+    ``UnicodeEncodeError``. Replacing unencodable characters keeps the run
+    alive while leaving ASCII output untouched.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(errors="replace")
+            except (ValueError, OSError):
+                # Stream does not support reconfiguration (e.g. redirected
+                # binary buffer) -- nothing to do.
+                pass
+
+
+def _clamp_campaign_day(config: Dict) -> int:
+    """Clamp ``intelligence.campaign_day`` to the simulated day range.
+
+    The campaign day doubles as the SCM intervention day in Phase 2 (which
+    requires ``0 <= campaign_day < simulation_days``) and as the reference day
+    for lift analysis in Phase 5. Clamping here keeps both phases consistent and
+    turns a ``--campaign-day`` / ``--days`` mismatch into a warning instead of a
+    hard failure.
+
+    Args:
+        config: Configuration dictionary (mutated in place)
+
+    Returns:
+        The clamped campaign day
+    """
+    n_days = int(config["simulation"]["simulation_days"])
+    intelligence = config.setdefault("intelligence", {})
+    requested = int(intelligence.get("campaign_day", 14))
+    clamped = min(max(requested, 0), n_days - 1)
+    if clamped != requested:
+        print(
+            f"  [WARN] campaign_day={requested} is outside the simulated range "
+            f"[0, {n_days - 1}]; using {clamped}"
+        )
+    intelligence["campaign_day"] = clamped
+    return clamped
 
 
 def _apply_cli_overrides(config: Dict, args: argparse.Namespace):
@@ -178,6 +227,9 @@ def run_simulation(config: Dict, output_dir: str):
     print("ECOSYSTEM DATA SIMULATOR")
     print("=" * 80)
 
+    # Make progress output safe on consoles that cannot encode non-ASCII glyphs
+    _configure_console_output()
+
     # Device detection
     print("\n[DEVICE] Detecting compute hardware...")
     device_type = detect_device()
@@ -199,6 +251,10 @@ def run_simulation(config: Dict, output_dir: str):
 
     # Load dataset priors
     priors = load_priors(config)
+
+    # Campaign day is used by both Phase 2 (SCM intervention) and Phase 5
+    # (lift analysis) -- clamp it once so the two phases cannot disagree.
+    campaign_day = _clamp_campaign_day(config)
 
     # Phase 1: Generate users
     print("\n[PHASE 1] Generating user population...")
@@ -237,7 +293,6 @@ def run_simulation(config: Dict, output_dir: str):
 
     # Export causal table with counterfactual (dual columns: factual + counterfactual)
     # Uses time-localized intervention: treatment is zeroed from campaign_day onward
-    campaign_day = config.get("intelligence", {}).get("campaign_day", 14)
     counterfactual_matrix = (
         causal_engine.generate_time_localized_no_treatment_counterfactual(
             interest_matrix, intervention_day=campaign_day
@@ -335,7 +390,6 @@ def run_simulation(config: Dict, output_dir: str):
     # Read intelligence config (CLI overrides or defaults)
     intel_config = config.get("intelligence", {})
     confidence_threshold = intel_config.get("confidence_threshold", 0.7)
-    campaign_day = intel_config.get("campaign_day", 14)
     campaign_id = intel_config.get("campaign_id", "campaign_001")
 
     # ------------------------------------------------------------------
@@ -348,15 +402,15 @@ def run_simulation(config: Dict, output_dir: str):
     gt_metrics = GroundTruthGraphBuilder.compute_metrics(gt_graphs["user_log"])
 
     print(
-        f"  * User→Device graph: {gt_graphs['user_device'].number_of_nodes()} nodes, "
+        f"  * User->Device graph: {gt_graphs['user_device'].number_of_nodes()} nodes, "
         f"{gt_graphs['user_device'].number_of_edges()} edges"
     )
     print(
-        f"  * User→Event graph:  {gt_graphs['user_event'].number_of_nodes()} nodes, "
+        f"  * User->Event graph:  {gt_graphs['user_event'].number_of_nodes()} nodes, "
         f"{gt_graphs['user_event'].number_of_edges()} edges"
     )
     print(
-        f"  * User→Log graph:    {gt_graphs['user_log'].number_of_nodes()} nodes, "
+        f"  * User->Log graph:    {gt_graphs['user_log'].number_of_nodes()} nodes, "
         f"{gt_graphs['user_log'].number_of_edges()} edges"
     )
     print(
@@ -367,7 +421,7 @@ def run_simulation(config: Dict, output_dir: str):
 
     # Export ground-truth graphs as serializable JSON
     gt_graphs_path = output_path / "ground_truth_graphs.json"
-    with open(gt_graphs_path, "w") as f:
+    with open(gt_graphs_path, "w", encoding="utf-8") as f:
         json.dump(
             _convert_to_native(
                 {
@@ -389,7 +443,7 @@ def run_simulation(config: Dict, output_dir: str):
 
     # Export ground-truth device mapping
     gt_mapping_path = output_path / "ground_truth_device_mapping.json"
-    with open(gt_mapping_path, "w") as f:
+    with open(gt_mapping_path, "w", encoding="utf-8") as f:
         json.dump(
             _convert_to_native(
                 {
@@ -421,6 +475,12 @@ def run_simulation(config: Dict, output_dir: str):
             f"  * Built {ig_metrics['n_users_with_graphs']} user graphs: "
             f"{ig_metrics['total_edges']} edges across {ig_metrics['total_events']} events"
         )
+        if ig_metrics.get("unidentified_events"):
+            print(
+                f"  * Unidentified bucket (excluded from user metrics): "
+                f"{ig_metrics['unidentified_events']} events, "
+                f"{ig_metrics['unidentified_edges']} edges"
+            )
 
         # Export interaction graphs (reads from the streaming buffer, then cleans it up)
         ig_path = output_path / "interaction_graphs.json"
@@ -450,14 +510,16 @@ def run_simulation(config: Dict, output_dir: str):
     )
 
     lift_path = output_path / "lift_report.json"
-    with open(lift_path, "w") as f:
+    with open(lift_path, "w", encoding="utf-8") as f:
         json.dump(_convert_to_native(lift_report), f, indent=2)
 
     print(
         f"  * Campaign lift: {lift_report['lift_percent']:.1f}% (p={lift_report['p_value']:.4f})"
     )
 
+    # ------------------------------------------------------------------
     # Phase 6: Counterfactual graph analysis (SCM-powered)
+    # ------------------------------------------------------------------
     cf_path = output_path / "counterfactual_graph_report.json"
     if config.get("scm", {}).get("counterfactual_graphs", {}).get("enabled", False):
         print("\n[PHASE 6] Generating counterfactual graph worlds...")
@@ -466,11 +528,16 @@ def run_simulation(config: Dict, output_dir: str):
             confidence_threshold=confidence_threshold
         )
 
+        # Directory for per-scenario outputs (full edge lists + metrics)
+        cf_graphs_dir = output_path / "counterfactual_graphs"
+        cf_graphs_dir.mkdir(exist_ok=True)
+
         cf_report = cf_stitcher.generate_all_scenario_graphs(
             causal_engine=causal_engine,
             users=users,
             factual_interest_matrix=interest_matrix,
             intervention_day=campaign_day,
+            scenario_graphs_output_dir=str(cf_graphs_dir),
         )
 
         # Export counterfactual report
@@ -481,7 +548,7 @@ def run_simulation(config: Dict, output_dir: str):
         # Print summary of causal pathways
         print("\n  [Causal Pathway Discovery]")
         for pathway in cf_report.get("causal_pathways", []):
-            print(f"    • {pathway.get('interpretation', 'N/A')}")
+            print(f"    * {pathway.get('interpretation', 'N/A')}")
 
         # Print comparison deltas
         comparison = cf_report.get("comparison", {})
@@ -492,21 +559,25 @@ def run_simulation(config: Dict, output_dir: str):
                 edge_delta = delta.get("delta_total_edges", 0)
                 density_delta = delta.get("delta_edge_density", 0)
                 print(
-                    f"    • {scenario}: edges={edge_delta:+.1f}%, "
+                    f"    * {scenario}: edges={edge_delta:+.1f}%, "
                     f"density={density_delta:+.2f}%"
                 )
 
-        # Export individual scenario graphs
-        cf_graphs_dir = output_path / "counterfactual_graphs"
-        cf_graphs_dir.mkdir(exist_ok=True)
-
+        # Export individual scenario metrics (full graph edge lists were already
+        # written by the stitcher to {scenario}_graph.json in cf_graphs_dir)
         for scenario_name, scenario_data in cf_report.get("scenarios", {}).items():
             scenario_path = cf_graphs_dir / f"{scenario_name}_metrics.json"
-            with open(scenario_path, "w") as f:
+            with open(scenario_path, "w", encoding="utf-8") as f:
                 json.dump(_convert_to_native(scenario_data), f, indent=2)
 
+        n_graphs = sum(
+            1
+            for s in cf_report.get("scenarios", {}).values()
+            if s.get("graph_file")
+        )
         print(
-            f"  * Exported {len(cf_report.get('scenarios', {}))} scenario graph metrics"
+            f"  * Exported {len(cf_report.get('scenarios', {}))} scenario worlds "
+            f"({n_graphs} full graphs + metrics) to {cf_graphs_dir}"
         )
     else:
         print("\n[PHASE 6] Counterfactual graph analysis disabled (enable in config)")

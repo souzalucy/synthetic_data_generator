@@ -16,7 +16,7 @@ def load_priors(config: Dict) -> Optional[Dict]:
         print(f"         Run: python ecosystem_sim/scripts/extract_priors.py")
         return None
 
-    with open(priors_path, "r") as f:
+    with open(priors_path, "r", encoding="utf-8") as f:
         priors = json.load(f)
 
     n_datasets = len(priors.get("metadata", {}).get("datasets_included", []))

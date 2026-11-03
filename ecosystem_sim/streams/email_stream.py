@@ -92,5 +92,4 @@ class EmailStream(BaseStream):
             )
             events.append(spam_event)
 
-        self.events.extend(events)
         return events
